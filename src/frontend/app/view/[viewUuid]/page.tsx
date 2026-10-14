@@ -13,6 +13,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import ThemeToggle from "@/components/ThemeToggle";
 import PrintPreview from "@/components/print/PrintPreview";
 import ProjectNotesPanel from "@/components/ProjectNotesPanel";
+import ExportMenu from "@/components/ExportMenu";
 
 export default function ProjectViewPage() {
   const params = useParams();
@@ -213,6 +214,7 @@ export default function ProjectViewPage() {
           >
             Print
           </button>
+          <ExportMenu source="view" />
           <button
             onClick={handleFork}
             className="px-3.5 py-1.5 rounded bg-white/10 hover:bg-white/20 transition-colors text-sm"

@@ -91,6 +91,12 @@ export interface ProjectMeta {
   preview_data: PreviewData | null;
 }
 
+/** One page of the user's projects; `next` is the cursor for the page after it. */
+export interface ProjectPage {
+  results: ProjectMeta[];
+  next: string | null;
+}
+
 export interface ProjectDetail extends ProjectMeta {
   data: Record<string, unknown>;
   owner_name: string | null;
@@ -126,6 +132,24 @@ export async function deleteProject(editUuid: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete project");
 }
 
+export async function duplicateProject(editUuid: string, name: string): Promise<ProjectMeta> {
+  const res = await apiFetch(`/projects/${editUuid}/duplicate/`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? "Failed to duplicate project");
+  return res.json();
+}
+
+export async function renameProject(editUuid: string, name: string): Promise<string> {
+  const res = await apiFetch(`/projects/${editUuid}/rename/`, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error("Failed to rename project");
+  return (await res.json()).name;
+}
+
 export async function getProjectView(viewUuid: string): Promise<ProjectDetail> {
   const res = await apiFetch(`/projects/view/${viewUuid}/`);
   if (!res.ok) throw new Error("Project not found");
@@ -153,8 +177,8 @@ export async function claimProject(editUuid: string): Promise<ProjectDetail> {
   return res.json();
 }
 
-export async function getUserProjects(): Promise<ProjectMeta[]> {
-  const res = await apiFetch("/users/me/projects/");
+export async function getUserProjects(before?: string | null): Promise<ProjectPage> {
+  const res = await apiFetch(`/users/me/projects/${before ? `?before=${encodeURIComponent(before)}` : ""}`);
   if (!res.ok) throw new Error("Failed to load projects");
   return res.json();
 }

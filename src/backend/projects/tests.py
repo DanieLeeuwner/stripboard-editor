@@ -3,6 +3,7 @@ import os
 
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
+from django.utils import timezone
 
 from projects.migrations_data.ic_unification import (
     SCHEMA_VERSION,
@@ -1023,3 +1024,102 @@ class ProjectLimitTests(TestCase):
         anon = Project.objects.create(data={})
         self.assertEqual(client.post(f"/api/projects/{anon.edit_uuid}/claim/").status_code, 403)
         self.assertEqual(client.post(f"/api/projects/fork/{anon.view_uuid}/").status_code, 403)
+
+
+class ProjectDuplicateRenameTests(TestCase):
+    """Duplicate and rename from the project list: owner only, and the name is
+    kept in step between the row and the project JSON."""
+
+    def setUp(self):
+        self.user = User.objects.create_user("owner", password="x" * 64)
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.project = Project.objects.create(
+            owner=self.user, name="Fuzz", data={"version": CURRENT_SCHEMA_VERSION, "name": "Fuzz", "components": []},
+        )
+
+    def test_duplicate_copies_data_under_a_new_name(self):
+        res = self.client.post(f"/api/projects/{self.project.edit_uuid}/duplicate/")
+        self.assertEqual(res.status_code, 201)
+        copy = Project.objects.get(edit_uuid=res.json()["edit_uuid"])
+        self.assertNotEqual(copy.pk, self.project.pk)
+        self.assertEqual(copy.owner, self.user)
+        self.assertEqual(copy.name, "Fuzz (copy)")
+        self.assertEqual(copy.data["name"], "Fuzz (copy)")
+        self.assertEqual(copy.data["components"], [])
+        self.assertIsNone(copy.fork_of)
+
+    def test_rename_updates_row_and_json(self):
+        res = self.client.post(
+            f"/api/projects/{self.project.edit_uuid}/rename/",
+            data=json.dumps({"name": "  <b>Big</b> Muff "}), content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.name, "Big Muff")
+        self.assertEqual(self.project.data["name"], "Big Muff")
+
+    def test_only_the_owner(self):
+        other = Client()
+        other.force_login(User.objects.create_user("other", password="x" * 64))
+        url = f"/api/projects/{self.project.edit_uuid}"
+        self.assertEqual(other.post(f"{url}/duplicate/").status_code, 404)
+        self.assertEqual(other.post(f"{url}/rename/", data=json.dumps({"name": "x"}), content_type="application/json").status_code, 404)
+        self.assertIn(Client().post(f"{url}/duplicate/").status_code, (401, 403))
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.name, "Fuzz")
+
+    def test_duplicate_respects_project_limit(self):
+        from projects import views
+        Project.objects.bulk_create([Project(owner=self.user, data={}) for _ in range(views.MAX_PROJECTS_PER_USER)])
+        self.assertEqual(self.client.post(f"/api/projects/{self.project.edit_uuid}/duplicate/").status_code, 403)
+
+    def test_duplicate_with_a_chosen_name(self):
+        res = self.client.post(
+            f"/api/projects/{self.project.edit_uuid}/duplicate/",
+            data=json.dumps({"name": "Fuzz 9V"}), content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.json()["name"], "Fuzz 9V")
+        self.assertEqual(Project.objects.get(edit_uuid=res.json()["edit_uuid"]).data["name"], "Fuzz 9V")
+
+
+class UserProjectsPaginationTests(TestCase):
+    def setUp(self):
+        from urllib.parse import quote
+        self.quote = quote
+        self.user = User.objects.create_user("pager", password="x" * 64)
+        self.client = Client()
+        self.client.force_login(self.user)
+        Project.objects.bulk_create([Project(owner=self.user, name=f"P{i}", data={}) for i in range(7)])
+        # Same timestamp for all: the id tie-break alone has to keep pages apart
+        Project.objects.filter(owner=self.user).update(updated_at=timezone.now())
+
+    def _page(self, before=None, limit=3):
+        url = f"/api/users/me/projects/?limit={limit}"
+        if before:
+            url += f"&before={self.quote(before)}"
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, 200)
+        return res.json()
+
+    def test_pages_cover_every_project_once(self):
+        seen, cursor = [], None
+        while True:
+            page = self._page(cursor)
+            seen += [p["edit_uuid"] for p in page["results"]]
+            cursor = page["next"]
+            if cursor is None:
+                break
+        self.assertEqual(len(seen), 7)
+        self.assertEqual(len(set(seen)), 7)
+
+    def test_new_project_does_not_shift_later_pages(self):
+        first = self._page()
+        Project.objects.create(owner=self.user, name="New", data={})
+        second = self._page(first["next"])
+        self.assertTrue({p["edit_uuid"] for p in first["results"]}.isdisjoint(p["edit_uuid"] for p in second["results"]))
+        self.assertNotIn("New", [p["name"] for p in second["results"]])
+
+    def test_bad_cursor(self):
+        self.assertEqual(self.client.get("/api/users/me/projects/?before=nonsense").status_code, 400)

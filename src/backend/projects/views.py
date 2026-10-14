@@ -5,6 +5,7 @@ import logging
 import os
 import sqlite3
 import tempfile
+from datetime import datetime
 
 from django.conf import settings as django_settings
 from django.contrib.auth import authenticate, login, logout
@@ -34,6 +35,7 @@ from .serializers import (
     ProjectDetailSerializer,
     ProjectViewSerializer,
     ProjectCreateSerializer,
+    sanitize_name,
     UserRegistrationSerializer,
     UserLoginSerializer,
     UserSerializer,
@@ -68,6 +70,7 @@ _log = logging.getLogger(__name__)
 # ── Projects ────────────────────────────────────────────
 
 MAX_PROJECTS_PER_USER = 500
+PROJECTS_PAGE_SIZE = 10
 
 
 def _project_limit_response(user):
@@ -218,12 +221,75 @@ def project_claim(request, edit_uuid):
     return Response(ProjectDetailSerializer(project).data)
 
 
+def _owned_project(request, edit_uuid):
+    """The signed-in user's own project, or None."""
+    return Project.objects.filter(edit_uuid=edit_uuid, owner=request.user).first()
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def project_duplicate(request, edit_uuid):
+    original = _owned_project(request, edit_uuid)
+    if original is None:
+        return Response({"error": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+    limit = _project_limit_response(request.user)
+    if limit:
+        return limit
+
+    data, _ = migrate_to_current(original.data)
+    requested = request.data.get("name")
+    name = sanitize_name(requested)[:255] if isinstance(requested, str) else f"{original.name[:248]} (copy)"
+    data["name"] = name
+    copy = Project.objects.create(name=name, data=data, owner=request.user)
+    return Response(ProjectListSerializer(copy).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def project_rename(request, edit_uuid):
+    project = _owned_project(request, edit_uuid)
+    if project is None:
+        return Response({"error": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+    name = request.data.get("name")
+    if not isinstance(name, str):
+        return Response({"error": "Expected a name"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # The name is kept in two places: the row (project lists) and the project
+    # JSON (the editor store, exports).
+    project.name = sanitize_name(name)[:255]
+    if isinstance(project.data, dict):
+        project.data["name"] = project.name
+    project.save(update_fields=["name", "data", "updated_at"])
+    return Response({"name": project.name})
+
+
 @cache_control(private=True, no_store=True)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def user_projects(request):
-    projects = Project.objects.filter(owner=request.user)
-    return Response(ProjectListSerializer(projects, many=True).data)
+    """One page of the user's projects, most recently updated first. `before`
+    is the `next` cursor of the previous page: keyed on (updated_at, id), so
+    projects created or deleted meanwhile do not shift the pages."""
+    try:
+        limit = min(max(int(request.query_params.get("limit", PROJECTS_PAGE_SIZE)), 1), 100)
+    except ValueError:
+        limit = PROJECTS_PAGE_SIZE
+    projects = Project.objects.filter(owner=request.user).order_by("-updated_at", "-id")
+    before = request.query_params.get("before")
+    if before:
+        try:
+            at, _, pk = before.rpartition("_")
+            at = datetime.fromisoformat(at)
+            projects = projects.filter(Q(updated_at__lt=at) | Q(updated_at=at, id__lt=int(pk)))
+        except ValueError:
+            return Response({"error": "Invalid cursor"}, status=status.HTTP_400_BAD_REQUEST)
+    page = list(projects[: limit + 1])
+    has_more = len(page) > limit
+    page = page[:limit]
+    return Response({
+        "results": ProjectListSerializer(page, many=True).data,
+        "next": f"{page[-1].updated_at.isoformat()}_{page[-1].id}" if has_more else None,
+    })
 
 
 # ── The user's part library ─────────────────────────────

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SiteFooter from "@/components/SiteFooter";
@@ -8,12 +8,15 @@ import {
   getUserProjects,
   getLibraryParts,
   deleteProject,
+  duplicateProject,
+  renameProject,
   deleteAccount,
   changePassword,
   setEmail,
   logout,
   type User,
   type ProjectMeta,
+  type ProjectPage,
 } from "@/lib/api";
 import { useProjectStore } from "@/store/useProjectStore";
 import StripboardPreview from "@/components/StripboardPreview";
@@ -29,7 +32,7 @@ export default function HomeClient({
   initialProjects,
 }: {
   initialUser: User | null;
-  initialProjects: ProjectMeta[];
+  initialProjects: ProjectPage;
 }) {
   const router = useRouter();
   const resetProject = useProjectStore((s) => s.resetProject);
@@ -41,10 +44,18 @@ export default function HomeClient({
     if (!user) return;
     getLibraryParts().then((parts) => setPartCount(parts ? parts.length : null)).catch(() => setPartCount(null));
   }, [user]);
-  const [projects, setProjects] = useState<ProjectMeta[]>(initialProjects);
+  const [projects, setProjects] = useState<ProjectMeta[]>(initialProjects.results);
+  // Cursor of the next (older) page of projects, null when all are shown
+  const [projectsNext, setProjectsNext] = useState<string | null>(initialProjects.next);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
 
   const [showAuth, setShowAuth] = useState<"login" | "register" | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  // Name prompt shared by rename and duplicate (the name the copy gets)
+  const [nameDialog, setNameDialog] = useState<{ mode: "rename" | "duplicate"; editUuid: string; name: string } | null>(null);
+  const [nameBusy, setNameBusy] = useState(false);
   const [showAccountDelete, setShowAccountDelete] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [newPw, setNewPw] = useState("");
@@ -69,10 +80,69 @@ export default function HomeClient({
     setDeleteConfirm(null);
   };
 
+  const handleNameSubmit = async () => {
+    if (!nameDialog) return;
+    const { mode, editUuid } = nameDialog;
+    const trimmed = nameDialog.name.trim();
+    const current = projects.find((p) => p.edit_uuid === editUuid);
+    if (!trimmed || (mode === "rename" && trimmed === current?.name)) {
+      setNameDialog(null);
+      return;
+    }
+    setNameBusy(true);
+    try {
+      if (mode === "rename") {
+        const name = await renameProject(editUuid, trimmed);
+        setProjects((prev) => prev.map((p) => (p.edit_uuid === editUuid ? { ...p, name } : p)));
+      } else {
+        const copy = await duplicateProject(editUuid, trimmed);
+        setProjects((prev) => [copy, ...prev]);
+      }
+      track(mode === "rename" ? "project-rename" : "project-duplicate", { source: "home" });
+      setNameDialog(null);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : `Couldn't ${mode} the project.`);
+    } finally {
+      setNameBusy(false);
+    }
+  };
+
+  const loadMoreProjects = async () => {
+    if (!projectsNext || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await getUserProjects(projectsNext);
+      // A project saved meanwhile moved to the top and may come round again
+      setProjects((prev) => {
+        const shown = new Set(prev.map((p) => p.edit_uuid));
+        return [...prev, ...page.results.filter((p) => !shown.has(p.edit_uuid))];
+      });
+      setProjectsNext(page.next);
+    } catch {
+      // Stop here: the observer would otherwise retry on every render
+      setLoadMoreFailed(true);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // Load the next page when the end of the list scrolls into view
+  useEffect(() => {
+    const el = moreRef.current;
+    if (!el || !projectsNext || loadMoreFailed) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) void loadMoreProjects();
+    }, { rootMargin: "200px" });
+    observer.observe(el);
+    return () => observer.disconnect();
+  });
+
   const handleLogout = async () => {
     await logout();
     setUser(null);
     setProjects([]);
+    setProjectsNext(null);
+    setLoadMoreFailed(false);
     router.refresh();
   };
 
@@ -452,15 +522,36 @@ export default function HomeClient({
                         {project.fork_count > 0 && ` · ${project.fork_count} fork${project.fork_count > 1 ? "s" : ""}`}
                       </p>
                     </div>
-                    <button
-                      onClick={(e) => { e.preventDefault(); setDeleteConfirm(project.edit_uuid); }}
-                      className="text-neutral-400 dark:text-neutral-500 hover:text-red-500 dark:hover:text-red-400 text-sm px-2 flex-shrink-0"
-                      title="Delete project"
-                    >
-                      Delete
-                    </button>
+                    <div className="flex flex-col sm:flex-row items-end sm:items-center flex-shrink-0">
+                      <button
+                        onClick={(e) => { e.preventDefault(); setNameDialog({ mode: "rename", editUuid: project.edit_uuid, name: project.name }); }}
+                        className="text-neutral-400 dark:text-neutral-500 hover:text-[#113768] dark:hover:text-[#5b9bd5] text-sm px-2 flex-shrink-0"
+                        title="Rename project"
+                      >
+                        Rename
+                      </button>
+                      <button
+                        onClick={(e) => { e.preventDefault(); setNameDialog({ mode: "duplicate", editUuid: project.edit_uuid, name: `${project.name} (copy)` }); }}
+                        className="text-neutral-400 dark:text-neutral-500 hover:text-[#113768] dark:hover:text-[#5b9bd5] text-sm px-2 flex-shrink-0"
+                        title="Make a copy of this project"
+                      >
+                        Duplicate
+                      </button>
+                      <button
+                        onClick={(e) => { e.preventDefault(); setDeleteConfirm(project.edit_uuid); }}
+                        className="text-neutral-400 dark:text-neutral-500 hover:text-red-500 dark:hover:text-red-400 text-sm px-2 flex-shrink-0"
+                        title="Delete project"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </Link>
                 ))}
+                {projectsNext && (
+                  <div ref={moreRef} className="self-center mt-1 py-2 text-sm text-neutral-400 dark:text-neutral-500">
+                    {loadMoreFailed ? "Couldn't load older projects. Reload the page to try again." : loadingMore ? "Loading older projects..." : null}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -641,6 +732,49 @@ export default function HomeClient({
         </div>
       )}
 
+      {/* Name prompt: rename, or the name of a duplicate */}
+      {nameDialog && (
+        <div
+          className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
+          onClick={() => setNameDialog(null)}
+        >
+          <form
+            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => { e.preventDefault(); void handleNameSubmit(); }}
+          >
+            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-3">
+              {nameDialog.mode === "rename" ? "Rename Project" : "Duplicate Project"}
+            </h2>
+            <input
+              autoFocus
+              onFocus={(e) => e.target.select()}
+              value={nameDialog.name}
+              maxLength={255}
+              onChange={(e) => setNameDialog({ ...nameDialog, name: e.target.value })}
+              onKeyDown={(e) => { if (e.key === "Escape") setNameDialog(null); }}
+              className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 dark:bg-neutral-800 outline-none focus:border-blue-400 mb-5"
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setNameDialog(null)}
+                className="px-4 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={nameBusy}
+                className="px-4 py-2 text-sm rounded bg-[#113768] text-white font-medium hover:bg-[#0d2a50] transition-colors disabled:opacity-60"
+              >
+                {nameDialog.mode === "rename" ? "Rename" : nameBusy ? "Duplicating..." : "Duplicate"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Delete confirmation modal */}
       {deleteConfirm && (
         <div
@@ -687,7 +821,10 @@ export default function HomeClient({
           onSuccess={(u) => {
             setUser(u);
             setShowAuth(null);
-            getUserProjects().then(setProjects);
+            getUserProjects().then((page) => {
+              setProjects(page.results);
+              setProjectsNext(page.next);
+            });
             router.refresh();
           }}
         />
