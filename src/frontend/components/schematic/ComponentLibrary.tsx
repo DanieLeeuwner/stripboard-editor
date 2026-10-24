@@ -313,7 +313,7 @@ export default function ComponentLibrary() {
   );
 
   return (
-    <div className="font-sans flex flex-col flex-1 min-h-0 border-b border-neutral-200 dark:border-neutral-700">
+    <div className="font-sans flex flex-col flex-1 min-h-0 border-b border-neutral-200 dark:border-neutral-700 select-none">
       <div className="px-3.5 py-2.5 font-mono text-xs font-semibold text-[var(--copper)] uppercase tracking-[0.15em]">
         Components
       </div>
@@ -433,7 +433,7 @@ export default function ComponentLibrary() {
         {!searching && customSection}
       </div>
 
-      <p className="px-3.5 py-2 border-t border-neutral-200 dark:border-neutral-700 text-[11px] leading-snug text-neutral-500 dark:text-neutral-400">
+      <p className="px-3.5 py-2 border-t border-neutral-200 dark:border-neutral-700 text-[11px] leading-snug text-neutral-500 dark:text-neutral-400 select-text">
         IC pinouts from the{" "}
         <a
           href="https://gitlab.com/kicad/libraries/kicad-symbols"

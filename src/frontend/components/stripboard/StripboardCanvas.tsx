@@ -1116,7 +1116,7 @@ export default function StripboardCanvas({
     : "crosshair";
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full select-none">
       <div ref={containerRef} className="flex-1 overflow-hidden relative">
         <svg
           data-testid="stripboard-canvas"

@@ -951,7 +951,7 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
   const selCount = selSize(selection);
 
   return (
-    <div ref={containerRef} className="h-full w-full overflow-hidden relative">
+    <div ref={containerRef} className="h-full w-full overflow-hidden relative select-none">
       <svg
         ref={(el) => {
           svgRef.current = el;
@@ -1337,7 +1337,7 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
             onClick={() => setExcludeConfirmIds(null)}
           >
             <div
-              className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
+              className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0 select-none"
               onClick={(e) => e.stopPropagation()}
             >
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Exclude from Stripboard</h2>

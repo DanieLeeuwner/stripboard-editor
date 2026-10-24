@@ -10,7 +10,7 @@ export default function SiteHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <header className="h-12 flex items-center px-3 sm:px-6 justify-between border-b-2 border-[var(--copper)]">
+    <header className="h-12 flex items-center px-3 sm:px-6 justify-between border-b-2 border-[var(--copper)] select-none">
       <div className="flex items-center min-w-0 mr-2 font-mono text-sm">
         <Link
           href="/"

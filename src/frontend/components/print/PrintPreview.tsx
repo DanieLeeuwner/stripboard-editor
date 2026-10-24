@@ -102,7 +102,7 @@ export default function PrintPreview({ onClose, source, editUuid, viewUuid }: { 
   return createPortal(
     <div className="print-portal">
     <div className="print-overlay fixed inset-0 z-50 flex flex-col bg-black/50">
-      <div className="print-hide flex items-center gap-4 px-5 h-12 bg-[#113768] text-white text-sm">
+      <div className="print-hide flex items-center gap-4 px-5 h-12 bg-[#113768] text-white text-sm select-none">
         <span className="font-semibold">Print / PDF</span>
         <div className="flex items-center gap-x-4 gap-y-1 text-xs flex-wrap">
           {toggle("Component sheet", showComponentSheet, setShowComponentSheet)}

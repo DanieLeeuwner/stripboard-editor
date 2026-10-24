@@ -39,7 +39,7 @@ export default function SchematicEditor({ readOnly = false, hideSidebar = false 
 
   return (
     <div
-      className="relative flex h-full flex-col"
+      className="relative flex h-full flex-col select-none"
       onMouseDownCapture={readOnly ? undefined : () => setActiveEditor("schematic")}
     >
       {/* Header */}
@@ -90,7 +90,7 @@ export default function SchematicEditor({ readOnly = false, hideSidebar = false 
         <div className="pointer-events-none absolute inset-0 z-30 ring-2 ring-inset ring-[var(--copper)]/70" />
       )}
       {!readOnly && notice && (
-        <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 z-40 rounded-md border border-neutral-200 dark:border-neutral-700 bg-white/95 dark:bg-neutral-800/95 shadow-sm dark:shadow-neutral-900/30 px-3 py-1.5 text-xs text-neutral-700 dark:text-neutral-200">
+        <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 z-40 rounded-md border border-neutral-200 dark:border-neutral-700 bg-white/95 dark:bg-neutral-800/95 shadow-sm dark:shadow-neutral-900/30 px-3 py-1.5 text-xs text-neutral-700 dark:text-neutral-200 select-text">
           {notice.merges.map((m) => (
             <span key={m.into} className="mr-2">
               Joined {m.joined.join(", ")} into <span className="font-semibold">{m.into}</span>
@@ -107,7 +107,7 @@ export default function SchematicEditor({ readOnly = false, hideSidebar = false 
           onClick={() => setSwitchPreview(null)}
         >
           <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-[26rem] max-w-md mx-4 sm:mx-0"
+            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-[26rem] max-w-md mx-4 sm:mx-0 select-text"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Switch to touch wiring</h2>
