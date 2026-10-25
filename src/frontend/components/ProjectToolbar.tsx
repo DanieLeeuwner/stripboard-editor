@@ -13,6 +13,7 @@ import ThemeToggle from "./ThemeToggle";
 import PrintPreview from "./print/PrintPreview";
 import AuthModal from "./AuthModal";
 import ProjectNotesPanel from "./ProjectNotesPanel";
+import Modal from "./Modal";
 
 interface Props {
   editUuid?: string;
@@ -602,99 +603,83 @@ export default function ProjectToolbar({ editUuid, viewUuid, onSave, saving, las
 
       {/* Netlist export shipped a generated footprint library */}
       {footprintNotice !== null && (
-        <div
-          className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
-          onClick={() => setFootprintNotice(null)}
-        >
-          <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[30rem] max-w-[90vw]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
-              Footprint library included
-            </h2>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-              {footprintNotice} part{footprintNotice === 1 ? "" : "s"} in this design{" "}
-              {footprintNotice === 1 ? "has" : "have"} no standard KiCad footprint, so{" "}
+        <Modal onClose={() => setFootprintNotice(null)} size="md">
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+            Footprint library included
+          </h2>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+            {footprintNotice} part{footprintNotice === 1 ? "" : "s"} in this design{" "}
+            {footprintNotice === 1 ? "has" : "have"} no standard KiCad footprint, so{" "}
+            <code className="font-mono text-xs bg-neutral-100 dark:bg-neutral-800 rounded px-1 py-0.5">
+              {FOOTPRINT_LIB_NICKNAME}.pretty.zip
+            </code>{" "}
+            was downloaded alongside the netlist.
+          </p>
+          <ol className="text-sm text-neutral-600 dark:text-neutral-400 mb-5 space-y-1.5 list-decimal list-outside pl-5">
+            <li>
+              Unzip it to get the{" "}
               <code className="font-mono text-xs bg-neutral-100 dark:bg-neutral-800 rounded px-1 py-0.5">
-                {FOOTPRINT_LIB_NICKNAME}.pretty.zip
+                {FOOTPRINT_LIB_NICKNAME}.pretty
               </code>{" "}
-              was downloaded alongside the netlist.
-            </p>
-            <ol className="text-sm text-neutral-600 dark:text-neutral-400 mb-5 space-y-1.5 list-decimal list-outside pl-5">
-              <li>
-                Unzip it to get the{" "}
-                <code className="font-mono text-xs bg-neutral-100 dark:bg-neutral-800 rounded px-1 py-0.5">
-                  {FOOTPRINT_LIB_NICKNAME}.pretty
-                </code>{" "}
-                folder.
-              </li>
-              <li>
-                In KiCad, open{" "}
-                <span className="font-medium text-neutral-700 dark:text-neutral-300">
-                  Preferences → Manage Footprint Libraries
-                </span>
-                .
-              </li>
-              <li>
-                Add that folder with the nickname{" "}
-                <code className="font-mono text-xs bg-neutral-100 dark:bg-neutral-800 rounded px-1 py-0.5">
-                  {FOOTPRINT_LIB_NICKNAME}
-                </code>
-                .
-              </li>
-            </ol>
-            <div className="flex justify-end">
-              <button
-                onClick={() => setFootprintNotice(null)}
-                className="px-4 py-2 text-sm rounded bg-[#113768] text-white font-medium hover:bg-[#0d2a50] transition-colors"
-              >
-                Got it
-              </button>
-            </div>
+              folder.
+            </li>
+            <li>
+              In KiCad, open{" "}
+              <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                Preferences → Manage Footprint Libraries
+              </span>
+              .
+            </li>
+            <li>
+              Add that folder with the nickname{" "}
+              <code className="font-mono text-xs bg-neutral-100 dark:bg-neutral-800 rounded px-1 py-0.5">
+                {FOOTPRINT_LIB_NICKNAME}
+              </code>
+              .
+            </li>
+          </ol>
+          <div className="flex justify-end">
+            <button
+              onClick={() => setFootprintNotice(null)}
+              className="px-4 py-2 text-sm rounded bg-[#113768] text-white font-medium hover:bg-[#0d2a50] transition-colors"
+            >
+              Got it
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Unsaved changes confirmation */}
       {showExitConfirm && (
-        <div
-          className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
-          onClick={() => setShowExitConfirm(false)}
-        >
-          <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-96"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Unsaved Changes</h2>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-5">
-              You have unsaved changes. Would you like to save before leaving?
-            </p>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setShowExitConfirm(false)}
-                className="px-4 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => router.push("/")}
-                className="px-4 py-2 text-sm rounded bg-red-500 dark:bg-red-600 text-white font-medium hover:bg-red-600 transition-colors"
-              >
-                Discard & Leave
-              </button>
-              <button
-                onClick={async () => {
-                  const ok = onSave ? await onSave() : true;
-                  if (ok) router.push("/");
-                }}
-                className="px-4 py-2 text-sm rounded bg-[#113768] text-white font-medium hover:bg-[#0d2a50] transition-colors"
-              >
-                Save & Leave
-              </button>
-            </div>
+        <Modal onClose={() => setShowExitConfirm(false)} size="md">
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Unsaved Changes</h2>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-5">
+            You have unsaved changes. Would you like to save before leaving?
+          </p>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => setShowExitConfirm(false)}
+              className="px-4 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => router.push("/")}
+              className="px-4 py-2 text-sm rounded bg-red-500 dark:bg-red-600 text-white font-medium hover:bg-red-600 transition-colors"
+            >
+              Discard & Leave
+            </button>
+            <button
+              onClick={async () => {
+                const ok = onSave ? await onSave() : true;
+                if (ok) router.push("/");
+              }}
+              className="px-4 py-2 text-sm rounded bg-[#113768] text-white font-medium hover:bg-[#0d2a50] transition-colors"
+            >
+              Save & Leave
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Auth modal */}

@@ -7,6 +7,7 @@ import { resolveComponentDef } from "@/utils/resolveComponentDef";
 import { resolvePackage } from "./packageBodies";
 import { rigidBody } from "./partGeometry";
 import { track } from "@/lib/track";
+import Modal from "@/components/Modal";
 
 type CellState = "body" | { pinId: string; pinName: string };
 
@@ -178,180 +179,178 @@ export default function StripboardFootprintEditor({ componentId, onClose }: Prop
   const svgHeight = originY + Math.max(gridH, outline ? outline.y + outline.h : 0) + GRID_PADDING;
 
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
+    <Modal
+      onClose={onClose}
+      dismissible={false}
+      size="lg"
       onMouseUp={handleMouseUp}
+      className="max-h-[90vh] overflow-auto"
     >
-      <div
-        className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-5 max-w-lg max-h-[90vh] overflow-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-6 mb-5">
-          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 leading-tight">
-            <span className="font-mono">Edit Footprint</span>
-            <span className="mx-2 text-neutral-300 dark:text-neutral-600">/</span>
-            <span className="font-sans font-normal text-neutral-500 dark:text-neutral-400">{component.label}</span>
-          </h2>
-          <button
-            onClick={onClose}
-            className="flex-shrink-0 -mr-1.5 -mt-1 px-1.5 text-xl leading-none text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-400 transition-colors"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Grid size controls */}
-        <div className="flex items-center gap-4 mb-3 font-mono text-sm text-neutral-700 dark:text-neutral-300">
-          <div className="flex items-center gap-1">
-            <span>Rows: {rows}</span>
-            <button onClick={addRow} className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">+</button>
-            <button onClick={removeRow} className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">−</button>
-          </div>
-          <div className="flex items-center gap-1">
-            <span>Cols: {cols}</span>
-            <button onClick={addCol} className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">+</button>
-            <button onClick={removeCol} className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">−</button>
-          </div>
-        </div>
-
-        {/* Grid */}
-        <svg
-          width={svgWidth}
-          height={svgHeight}
-          className="font-sans border border-neutral-200 dark:border-neutral-700 rounded mb-3 bg-neutral-50 dark:bg-neutral-800 select-none"
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
+      <div className="flex items-start justify-between gap-6 mb-5">
+        <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 leading-tight">
+          <span className="font-mono">Edit Footprint</span>
+          <span className="mx-2 text-neutral-300 dark:text-neutral-600">/</span>
+          <span className="font-sans font-normal text-neutral-500 dark:text-neutral-400">{component.label}</span>
+        </h2>
+        <button
+          onClick={onClose}
+          className="flex-shrink-0 -mr-1.5 -mt-1 px-1.5 text-xl leading-none text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-400 transition-colors"
+          aria-label="Close"
         >
-          {grid.map((row, r) =>
-            row.map((cell, c) => {
-              const x = originX + c * STEP;
-              const y = originY + r * STEP;
-              const isPin = typeof cell === "object";
-              const isDragSource = draggingPin?.fromRow === r && draggingPin?.fromCol === c;
-              const hasMovedAway = isDragSource && hoverCell && (hoverCell.row !== r || hoverCell.col !== c);
-              const isDropTarget = draggingPin && hoverCell?.row === r && hoverCell?.col === c && !isDragSource;
+          ×
+        </button>
+      </div>
 
-              return (
-                <g
-                  key={`${r}-${c}`}
-                  style={{ cursor: isPin ? "grab" : draggingPin ? "pointer" : "default" }}
-                  onMouseDown={() => handleCellMouseDown(r, c)}
-                  onMouseUp={() => handleCellMouseUp(r, c)}
-                  onMouseEnter={() => draggingPin && setHoverCell({ row: r, col: c })}
-                >
-                  <rect
-                    x={x} y={y}
-                    width={CELL_SIZE} height={CELL_SIZE}
-                    rx={4}
-                    fill={
-                      hasMovedAway ? "#e5e5e5" :
-                      isDropTarget ? "#efdcae" :
-                      isPin ? "#404040" :
-                      "#d4d4d4"
-                    }
-                    stroke={isDropTarget ? "#D4A853" : "#a3a3a3"}
-                    strokeWidth={isDropTarget ? 2 : 1}
-                  />
-                  {isPin && !hasMovedAway && (
-                    <>
-                      <circle
-                        cx={x + CELL_SIZE / 2}
-                        cy={y + CELL_SIZE / 2 - 4}
-                        r={6}
-                        fill="white"
-                        pointerEvents="none"
-                      />
-                      <text
-                        x={x + CELL_SIZE / 2}
-                        y={y + CELL_SIZE / 2 + 12}
-                        textAnchor="middle"
-                        fontSize={8}
-                        fill="white"
-                        pointerEvents="none"
-                      >
-                        {cell.pinName}
-                      </text>
-                    </>
-                  )}
-                  {!isPin && (
-                    <circle
-                      cx={x + CELL_SIZE / 2}
-                      cy={y + CELL_SIZE / 2}
-                      r={3}
-                      fill="#a3a3a3"
-                      pointerEvents="none"
-                    />
-                  )}
-                </g>
-              );
-            })
-          )}
-
-          {outline && (
-            <rect
-              x={originX + outline.x} y={originY + outline.y}
-              width={outline.w} height={outline.h}
-              rx={6}
-              fill="rgba(212,168,83,0.12)"
-              stroke="#D4A853"
-              strokeWidth={2}
-              strokeDasharray="6 4"
-              pointerEvents="none"
-            />
-          )}
-
-          {/* Drag ghost following cursor */}
-          {draggingPin && hoverCell && (
-            (() => {
-              const x = originX + hoverCell.col * STEP;
-              const y = originY + hoverCell.row * STEP;
-              return (
-                <g pointerEvents="none" opacity={0.7}>
-                  <rect
-                    x={x} y={y}
-                    width={CELL_SIZE} height={CELL_SIZE}
-                    rx={4}
-                    fill="#404040"
-                    stroke="#D4A853"
-                    strokeWidth={2}
-                  />
-                  <circle cx={x + CELL_SIZE / 2} cy={y + CELL_SIZE / 2 - 4} r={6} fill="white" />
-                  <text
-                    x={x + CELL_SIZE / 2} y={y + CELL_SIZE / 2 + 12}
-                    textAnchor="middle" fontSize={8} fill="white"
-                  >
-                    {draggingPin.pinName}
-                  </text>
-                </g>
-              );
-            })()
-          )}
-        </svg>
-
-        {outline && (
-          <p className="mb-3 text-xs text-neutral-500 dark:text-neutral-400">
-            The dashed outline is the real size of the package. Auto layout keeps other parts clear of it, so the grid only needs to say where the pins go.
-          </p>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-2 font-mono">
-          <button
-            onClick={handleSave}
-            disabled={!allPinsPlaced}
-            className="flex-1 bg-[#113768] text-white text-sm py-2 rounded hover:bg-[#0d2a50] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Save Footprint
-          </button>
-          <button
-            onClick={onClose}
-            className="flex-1 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 text-sm py-2 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
-          >
-            Cancel
-          </button>
+      {/* Grid size controls */}
+      <div className="flex items-center gap-4 mb-3 font-mono text-sm text-neutral-700 dark:text-neutral-300">
+        <div className="flex items-center gap-1">
+          <span>Rows: {rows}</span>
+          <button onClick={addRow} className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">+</button>
+          <button onClick={removeRow} className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">−</button>
+        </div>
+        <div className="flex items-center gap-1">
+          <span>Cols: {cols}</span>
+          <button onClick={addCol} className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">+</button>
+          <button onClick={removeCol} className="px-1.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">−</button>
         </div>
       </div>
-    </div>
+
+      {/* Grid */}
+      <svg
+        width={svgWidth}
+        height={svgHeight}
+        className="font-sans border border-neutral-200 dark:border-neutral-700 rounded mb-3 bg-neutral-50 dark:bg-neutral-800 select-none"
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
+        {grid.map((row, r) =>
+          row.map((cell, c) => {
+            const x = originX + c * STEP;
+            const y = originY + r * STEP;
+            const isPin = typeof cell === "object";
+            const isDragSource = draggingPin?.fromRow === r && draggingPin?.fromCol === c;
+            const hasMovedAway = isDragSource && hoverCell && (hoverCell.row !== r || hoverCell.col !== c);
+            const isDropTarget = draggingPin && hoverCell?.row === r && hoverCell?.col === c && !isDragSource;
+
+            return (
+              <g
+                key={`${r}-${c}`}
+                style={{ cursor: isPin ? "grab" : draggingPin ? "pointer" : "default" }}
+                onMouseDown={() => handleCellMouseDown(r, c)}
+                onMouseUp={() => handleCellMouseUp(r, c)}
+                onMouseEnter={() => draggingPin && setHoverCell({ row: r, col: c })}
+              >
+                <rect
+                  x={x} y={y}
+                  width={CELL_SIZE} height={CELL_SIZE}
+                  rx={4}
+                  fill={
+                    hasMovedAway ? "#e5e5e5" :
+                    isDropTarget ? "#efdcae" :
+                    isPin ? "#404040" :
+                    "#d4d4d4"
+                  }
+                  stroke={isDropTarget ? "#D4A853" : "#a3a3a3"}
+                  strokeWidth={isDropTarget ? 2 : 1}
+                />
+                {isPin && !hasMovedAway && (
+                  <>
+                    <circle
+                      cx={x + CELL_SIZE / 2}
+                      cy={y + CELL_SIZE / 2 - 4}
+                      r={6}
+                      fill="white"
+                      pointerEvents="none"
+                    />
+                    <text
+                      x={x + CELL_SIZE / 2}
+                      y={y + CELL_SIZE / 2 + 12}
+                      textAnchor="middle"
+                      fontSize={8}
+                      fill="white"
+                      pointerEvents="none"
+                    >
+                      {cell.pinName}
+                    </text>
+                  </>
+                )}
+                {!isPin && (
+                  <circle
+                    cx={x + CELL_SIZE / 2}
+                    cy={y + CELL_SIZE / 2}
+                    r={3}
+                    fill="#a3a3a3"
+                    pointerEvents="none"
+                  />
+                )}
+              </g>
+            );
+          })
+        )}
+
+        {outline && (
+          <rect
+            x={originX + outline.x} y={originY + outline.y}
+            width={outline.w} height={outline.h}
+            rx={6}
+            fill="rgba(212,168,83,0.12)"
+            stroke="#D4A853"
+            strokeWidth={2}
+            strokeDasharray="6 4"
+            pointerEvents="none"
+          />
+        )}
+
+        {/* Drag ghost following cursor */}
+        {draggingPin && hoverCell && (
+          (() => {
+            const x = originX + hoverCell.col * STEP;
+            const y = originY + hoverCell.row * STEP;
+            return (
+              <g pointerEvents="none" opacity={0.7}>
+                <rect
+                  x={x} y={y}
+                  width={CELL_SIZE} height={CELL_SIZE}
+                  rx={4}
+                  fill="#404040"
+                  stroke="#D4A853"
+                  strokeWidth={2}
+                />
+                <circle cx={x + CELL_SIZE / 2} cy={y + CELL_SIZE / 2 - 4} r={6} fill="white" />
+                <text
+                  x={x + CELL_SIZE / 2} y={y + CELL_SIZE / 2 + 12}
+                  textAnchor="middle" fontSize={8} fill="white"
+                >
+                  {draggingPin.pinName}
+                </text>
+              </g>
+            );
+          })()
+        )}
+      </svg>
+
+      {outline && (
+        <p className="mb-3 text-xs text-neutral-500 dark:text-neutral-400">
+          The dashed outline is the real size of the package. Auto layout keeps other parts clear of it, so the grid only needs to say where the pins go.
+        </p>
+      )}
+
+      {/* Actions */}
+      <div className="flex gap-2 font-mono">
+        <button
+          onClick={handleSave}
+          disabled={!allPinsPlaced}
+          className="flex-1 bg-[#113768] text-white text-sm py-2 rounded hover:bg-[#0d2a50] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Save Footprint
+        </button>
+        <button
+          onClick={onClose}
+          className="flex-1 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 text-sm py-2 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </Modal>
   );
 }

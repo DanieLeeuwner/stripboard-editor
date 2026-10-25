@@ -21,6 +21,7 @@ import { track } from "@/lib/track";
 import SiteHeader from "@/components/SiteHeader";
 import AuthModal from "@/components/AuthModal";
 import PasswordInput from "@/components/PasswordInput";
+import Modal from "@/components/Modal";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -470,211 +471,179 @@ export default function HomeClient({
 
       {/* Change password modal */}
       {showChangePassword && (
-        <div
-          className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
-          onClick={() => setShowChangePassword(false)}
-        >
-          <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Change Password</h2>
-            {pwSuccess ? (
-              <div>
-                <p className="text-sm text-green-600 dark:text-green-400 mb-4">Password changed successfully.</p>
-                <button
-                  onClick={() => setShowChangePassword(false)}
-                  className="w-full bg-[#113768] text-white py-2 rounded text-sm font-medium hover:bg-[#0d2a50] transition-colors"
-                >
-                  Done
-                </button>
-              </div>
-            ) : (
-              <form
-                noValidate
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  setPwError(null);
-                  if (newPw !== confirmPw) {
-                    setPwError("New passwords do not match.");
-                    return;
-                  }
-                  try {
-                    await changePassword(newPw);
-                    track("password-change");
-                    setPwSuccess(true);
-                  } catch (err: unknown) {
-                    setPwError(err instanceof Error ? err.message : "Failed to change password");
-                  }
-                }}
-                className="flex flex-col gap-3"
+        <Modal onClose={() => setShowChangePassword(false)}>
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Change Password</h2>
+          {pwSuccess ? (
+            <div>
+              <p className="text-sm text-green-600 dark:text-green-400 mb-4">Password changed successfully.</p>
+              <button
+                onClick={() => setShowChangePassword(false)}
+                className="w-full bg-[#113768] text-white py-2 rounded text-sm font-medium hover:bg-[#0d2a50] transition-colors"
               >
-                <PasswordInput
-                  value={newPw}
-                  onChange={(e) => { setNewPw(e.target.value); setPwError(null); }}
-                  placeholder="New password"
-                  className="border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 dark:bg-neutral-800 outline-none focus:border-[#113768] dark:focus:border-[#5b9bd5]"
-                  autoFocus
-                />
-                <PasswordInput
-                  value={confirmPw}
-                  onChange={(e) => { setConfirmPw(e.target.value); setPwError(null); }}
-                  placeholder="Confirm new password"
-                  className="border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 dark:bg-neutral-800 outline-none focus:border-[#113768] dark:focus:border-[#5b9bd5]"
-                />
-                {pwError && <p className="text-xs text-red-500 dark:text-red-400">{pwError}</p>}
-                <button
-                  type="submit"
-                  disabled={!newPw || !confirmPw}
-                  className="bg-[#113768] text-white py-2 rounded text-sm font-medium hover:bg-[#0d2a50] transition-colors disabled:opacity-60"
-                >
-                  Change Password
-                </button>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Recovery email modal */}
-      {showEmailModal && (
-        <div
-          className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
-          onClick={() => setShowEmailModal(false)}
-        >
-          <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Recovery email</h2>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-              Used only to reset a forgotten password. Leave blank to remove it.
-            </p>
+                Done
+              </button>
+            </div>
+          ) : (
             <form
               noValidate
               onSubmit={async (e) => {
                 e.preventDefault();
-                setEmailError(null);
-                const trimmed = emailInput.trim();
-                if (trimmed && !EMAIL_RE.test(trimmed)) {
-                  setEmailError("Enter a valid email, or leave it blank.");
+                setPwError(null);
+                if (newPw !== confirmPw) {
+                  setPwError("New passwords do not match.");
                   return;
                 }
-                setEmailSaving(true);
                 try {
-                  const updated = await setEmail(trimmed);
-                  track("email-change", { action: trimmed ? "set" : "remove" });
-                  setUser(updated);
-                  setShowEmailModal(false);
+                  await changePassword(newPw);
+                  track("password-change");
+                  setPwSuccess(true);
                 } catch (err: unknown) {
-                  setEmailError(err instanceof Error ? err.message : "Failed to update email");
+                  setPwError(err instanceof Error ? err.message : "Failed to change password");
                 }
-                setEmailSaving(false);
               }}
               className="flex flex-col gap-3"
             >
-              <input
-                type="email"
-                value={emailInput}
-                onChange={(e) => { setEmailInput(e.target.value); setEmailError(null); }}
-                placeholder="you@example.com"
+              <PasswordInput
+                value={newPw}
+                onChange={(e) => { setNewPw(e.target.value); setPwError(null); }}
+                placeholder="New password"
                 className="border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 dark:bg-neutral-800 outline-none focus:border-[#113768] dark:focus:border-[#5b9bd5]"
                 autoFocus
               />
-              {emailError && <p className="text-xs text-red-500 dark:text-red-400">{emailError}</p>}
-              <div className="flex gap-2 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowEmailModal(false)}
-                  className="px-4 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={emailSaving}
-                  className="px-4 py-2 text-sm rounded bg-[#113768] text-white font-medium hover:bg-[#0d2a50] transition-colors disabled:opacity-60"
-                >
-                  {emailSaving ? "Saving..." : "Save"}
-                </button>
-              </div>
+              <PasswordInput
+                value={confirmPw}
+                onChange={(e) => { setConfirmPw(e.target.value); setPwError(null); }}
+                placeholder="Confirm new password"
+                className="border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 dark:bg-neutral-800 outline-none focus:border-[#113768] dark:focus:border-[#5b9bd5]"
+              />
+              {pwError && <p className="text-xs text-red-500 dark:text-red-400">{pwError}</p>}
+              <button
+                type="submit"
+                disabled={!newPw || !confirmPw}
+                className="bg-[#113768] text-white py-2 rounded text-sm font-medium hover:bg-[#0d2a50] transition-colors disabled:opacity-60"
+              >
+                Change Password
+              </button>
             </form>
-          </div>
-        </div>
+          )}
+        </Modal>
+      )}
+
+      {/* Recovery email modal */}
+      {showEmailModal && (
+        <Modal onClose={() => setShowEmailModal(false)}>
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Recovery email</h2>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+            Used only to reset a forgotten password. Leave blank to remove it.
+          </p>
+          <form
+            noValidate
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setEmailError(null);
+              const trimmed = emailInput.trim();
+              if (trimmed && !EMAIL_RE.test(trimmed)) {
+                setEmailError("Enter a valid email, or leave it blank.");
+                return;
+              }
+              setEmailSaving(true);
+              try {
+                const updated = await setEmail(trimmed);
+                track("email-change", { action: trimmed ? "set" : "remove" });
+                setUser(updated);
+                setShowEmailModal(false);
+              } catch (err: unknown) {
+                setEmailError(err instanceof Error ? err.message : "Failed to update email");
+              }
+              setEmailSaving(false);
+            }}
+            className="flex flex-col gap-3"
+          >
+            <input
+              type="email"
+              value={emailInput}
+              onChange={(e) => { setEmailInput(e.target.value); setEmailError(null); }}
+              placeholder="you@example.com"
+              className="border border-neutral-300 dark:border-neutral-600 rounded px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 dark:bg-neutral-800 outline-none focus:border-[#113768] dark:focus:border-[#5b9bd5]"
+              autoFocus
+            />
+            {emailError && <p className="text-xs text-red-500 dark:text-red-400">{emailError}</p>}
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowEmailModal(false)}
+                className="px-4 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={emailSaving}
+                className="px-4 py-2 text-sm rounded bg-[#113768] text-white font-medium hover:bg-[#0d2a50] transition-colors disabled:opacity-60"
+              >
+                {emailSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* Delete account modal */}
       {showAccountDelete && (
-        <div
-          className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
-          onClick={() => setShowAccountDelete(false)}
-        >
-          <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-96"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Delete Account</h2>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-5">
-              Are you sure? This will permanently delete your account and all your projects. This cannot be undone.
-            </p>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setShowAccountDelete(false)}
-                className="px-4 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  await deleteAccount();
-                  setUser(null);
-                  setProjects([]);
-                  setShowAccountDelete(false);
-                  router.refresh();
-                }}
-                className="px-4 py-2 text-sm rounded bg-red-500 dark:bg-red-600 text-white font-medium hover:bg-red-600 transition-colors"
-              >
-                Delete Account
-              </button>
-            </div>
+        <Modal onClose={() => setShowAccountDelete(false)}>
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Delete Account</h2>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-5">
+            Are you sure? This will permanently delete your account and all your projects. This cannot be undone.
+          </p>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => setShowAccountDelete(false)}
+              className="px-4 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                await deleteAccount();
+                setUser(null);
+                setProjects([]);
+                setShowAccountDelete(false);
+                router.refresh();
+              }}
+              className="px-4 py-2 text-sm rounded bg-red-500 dark:bg-red-600 text-white font-medium hover:bg-red-600 transition-colors"
+            >
+              Delete Account
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Delete confirmation modal */}
       {deleteConfirm && (
-        <div
-          className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
-          onClick={() => setDeleteConfirm(null)}
-        >
-          <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Delete Project</h2>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-5">
-              Are you sure you want to delete{" "}
-              <span className="font-medium">
-                {projects.find((p) => p.edit_uuid === deleteConfirm)?.name ?? "this project"}
-              </span>
-              ? This cannot be undone.
-            </p>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                className="px-4 py-2 text-sm rounded bg-red-500 dark:bg-red-600 text-white font-medium hover:bg-red-600 transition-colors"
-              >
-                Delete
-              </button>
-            </div>
+        <Modal onClose={() => setDeleteConfirm(null)}>
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Delete Project</h2>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-5">
+            Are you sure you want to delete{" "}
+            <span className="font-medium">
+              {projects.find((p) => p.edit_uuid === deleteConfirm)?.name ?? "this project"}
+            </span>
+            ? This cannot be undone.
+          </p>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => setDeleteConfirm(null)}
+              className="px-4 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDelete}
+              className="px-4 py-2 text-sm rounded bg-red-500 dark:bg-red-600 text-white font-medium hover:bg-red-600 transition-colors"
+            >
+              Delete
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
 
 

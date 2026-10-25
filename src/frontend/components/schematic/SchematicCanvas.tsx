@@ -6,6 +6,7 @@ import { useLibraryStore } from "@/store/useLibraryStore";
 import { Component, NetLabel, NetLabelKind, SchematicWire } from "@/types";
 import { resolveComponentDef } from "@/utils/resolveComponentDef";
 import { usePanZoom } from "@/hooks/usePanZoom";
+import Modal from "@/components/Modal";
 import SchematicComponentBlock from "./SchematicComponentBlock";
 import SchematicWireLine from "./SchematicWireLine";
 import SchematicNetLabel, { netLabelBounds } from "./SchematicNetLabel";
@@ -1332,46 +1333,38 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
         const placed = components.filter((c) => excludeConfirmIds.includes(c.id) && c.boardPos);
         const single = placed.length === 1;
         return (
-          <div
-            className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
-            onClick={() => setExcludeConfirmIds(null)}
-          >
-            <div
-              className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Exclude from Stripboard</h2>
-              <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-5">
-                {single ? (
-                  <>
-                    <span className="font-medium">{placed[0].label}</span> is already placed on the stripboard. Excluding it will remove it from the board. Continue?
-                  </>
-                ) : (
-                  <>
-                    <span className="font-medium">{placed.length} selected components</span> are already placed on the stripboard. Excluding them will remove them from the board. Continue?
-                  </>
-                )}
-              </p>
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => setExcludeConfirmIds(null)}
-                  className="px-4 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    transact(() => excludeConfirmIds.forEach((id) => setBoardExcluded(id, true)));
-                    track("component-exclude", { count: excludeConfirmIds.length });
-                    setExcludeConfirmIds(null);
-                  }}
-                  className="px-4 py-2 text-sm rounded bg-red-500 dark:bg-red-600 text-white font-medium hover:bg-red-600 transition-colors"
-                >
-                  Remove &amp; Exclude
-                </button>
-              </div>
+          <Modal onClose={() => setExcludeConfirmIds(null)}>
+            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Exclude from Stripboard</h2>
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-5">
+              {single ? (
+                <>
+                  <span className="font-medium">{placed[0].label}</span> is already placed on the stripboard. Excluding it will remove it from the board. Continue?
+                </>
+              ) : (
+                <>
+                  <span className="font-medium">{placed.length} selected components</span> are already placed on the stripboard. Excluding them will remove them from the board. Continue?
+                </>
+              )}
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setExcludeConfirmIds(null)}
+                className="px-4 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  transact(() => excludeConfirmIds.forEach((id) => setBoardExcluded(id, true)));
+                  track("component-exclude", { count: excludeConfirmIds.length });
+                  setExcludeConfirmIds(null);
+                }}
+                className="px-4 py-2 text-sm rounded bg-red-500 dark:bg-red-600 text-white font-medium hover:bg-red-600 transition-colors"
+              >
+                Remove &amp; Exclude
+              </button>
             </div>
-          </div>
+          </Modal>
         );
       })()}
 

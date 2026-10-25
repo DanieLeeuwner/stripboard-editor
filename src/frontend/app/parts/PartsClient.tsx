@@ -14,6 +14,7 @@ import {
 import { useLibraryStore } from "@/store/useLibraryStore";
 import { track } from "@/lib/track";
 import type { ComponentDef } from "@/types";
+import Modal from "@/components/Modal";
 
 const button =
   "font-mono text-sm px-3 py-1.5 rounded border border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:border-[var(--copper)] hover:text-[var(--copper)] transition-colors disabled:opacity-40";
@@ -308,31 +309,29 @@ export default function PartsClient() {
       )}
 
       {deleting && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setDeleting(null)}>
-          <div className={`${card} p-6 w-[calc(100%-2rem)] max-w-sm`} onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold mb-2">Delete from your library</h2>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-5">
-              Delete <span className="font-medium">{deleting.part.name}</span>? Projects that use it keep their copy.
-            </p>
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setDeleting(null)} className={button}>Cancel</button>
-              <button
-                onClick={() => {
-                  const target = deleting;
-                  setDeleting(null);
-                  run(`del-${target.id}`, async () => {
-                    await deleteLibraryPart(target.id);
-                    useLibraryStore.getState().remove(target.id);
-                    track("part-delete", { source: "parts-page" });
-                  });
-                }}
-                className="font-mono text-sm px-3 py-1.5 rounded bg-red-500 text-white hover:bg-red-600"
-              >
-                Delete
-              </button>
-            </div>
+        <Modal onClose={() => setDeleting(null)}>
+          <h2 className="text-lg font-semibold mb-2">Delete from your library</h2>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-5">
+            Delete <span className="font-medium">{deleting.part.name}</span>? Projects that use it keep their copy.
+          </p>
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setDeleting(null)} className={button}>Cancel</button>
+            <button
+              onClick={() => {
+                const target = deleting;
+                setDeleting(null);
+                run(`del-${target.id}`, async () => {
+                  await deleteLibraryPart(target.id);
+                  useLibraryStore.getState().remove(target.id);
+                  track("part-delete", { source: "parts-page" });
+                });
+              }}
+              className="font-mono text-sm px-3 py-1.5 rounded bg-red-500 text-white hover:bg-red-600"
+            >
+              Delete
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

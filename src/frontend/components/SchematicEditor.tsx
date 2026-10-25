@@ -7,6 +7,7 @@ import ComponentLibrary from "./schematic/ComponentLibrary";
 import NetPanel from "./schematic/NetPanel";
 import SchematicCanvas from "./schematic/SchematicCanvas";
 import ResizableSidebar from "./ResizableSidebar";
+import Modal from "@/components/Modal";
 
 /** A handful of pin names, the rest counted */
 function PinList({ pins, max = 6 }: { pins: string[]; max?: number }) {
@@ -102,70 +103,62 @@ export default function SchematicEditor({ readOnly = false, hideSidebar = false 
 
       {/* Switch an old project from classic to touch wiring, after showing what joins */}
       {switchPreview && (
-        <div
-          className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
-          onClick={() => setSwitchPreview(null)}
-        >
-          <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-[26rem] max-w-md mx-4 sm:mx-0"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Switch to touch wiring</h2>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
-              This project uses the legacy <span className="font-medium">classic wiring</span>: wires connect only where they end, as it was drawn.
-              With the new <span className="font-medium">touch wiring system</span> whatever touches is connected: a wire drawn across a pin, a wire end resting on another wire, a part parked on a wire.
-            </p>
-            {netDiffIsEmpty(switchPreview) ? (
-              <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-5">Nothing in this schematic touches without being connected already, so no net would change.</p>
-            ) : (
-              <div className="text-sm text-neutral-600 dark:text-neutral-400 mb-5">
-                <p className="mb-1.5">Switching to the new system would change these nets:</p>
-                <ul className="list-disc list-inside space-y-1 max-h-52 overflow-y-auto">
-                  {switchPreview.merges.map((m) => (
-                    <li key={`m-${m.into}`}>
-                      Join {m.joined.join(", ")} into <span className="font-medium text-neutral-800 dark:text-neutral-200">{m.into}</span>
-                    </li>
-                  ))}
-                  {switchPreview.joins.map((j) => (
-                    <li key={`j-${j.net}`}>
-                      Connect <PinList pins={j.pins} /> to <span className="font-medium text-neutral-800 dark:text-neutral-200">{j.net}</span>
-                    </li>
-                  ))}
-                  {switchPreview.newNets.map((n, i) => (
-                    <li key={`n-${i}`}>
-                      Make a new net of <PinList pins={n.pins} />
-                    </li>
-                  ))}
-                  {switchPreview.renames.map((r) => (
-                    <li key={`r-${r.from}`}>
-                      Rename {r.from} to <span className="font-medium text-neutral-800 dark:text-neutral-200">{r.to}</span>, from a flag it would touch
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-2 text-xs text-neutral-400 dark:text-neutral-500">
-                  Pins joining a net change what the stripboard has to wire up. You can undo the switch with Ctrl+Z.
-                </p>
-              </div>
-            )}
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setSwitchPreview(null)}
-                className="px-4 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
-              >
-                Keep classic
-              </button>
-              <button
-                onClick={() => {
-                  switchWiringToTouch();
-                  setSwitchPreview(null);
-                }}
-                className="px-4 py-2 text-sm rounded bg-[#113768] text-white font-medium hover:bg-[#0d2a50] transition-colors"
-              >
-                Switch
-              </button>
+        <Modal onClose={() => setSwitchPreview(null)} size="md">
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Switch to touch wiring</h2>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
+            This project uses the legacy <span className="font-medium">classic wiring</span>: wires connect only where they end, as it was drawn.
+            With the new <span className="font-medium">touch wiring system</span> whatever touches is connected: a wire drawn across a pin, a wire end resting on another wire, a part parked on a wire.
+          </p>
+          {netDiffIsEmpty(switchPreview) ? (
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-5">Nothing in this schematic touches without being connected already, so no net would change.</p>
+          ) : (
+            <div className="text-sm text-neutral-600 dark:text-neutral-400 mb-5">
+              <p className="mb-1.5">Switching to the new system would change these nets:</p>
+              <ul className="list-disc list-inside space-y-1 max-h-52 overflow-y-auto">
+                {switchPreview.merges.map((m) => (
+                  <li key={`m-${m.into}`}>
+                    Join {m.joined.join(", ")} into <span className="font-medium text-neutral-800 dark:text-neutral-200">{m.into}</span>
+                  </li>
+                ))}
+                {switchPreview.joins.map((j) => (
+                  <li key={`j-${j.net}`}>
+                    Connect <PinList pins={j.pins} /> to <span className="font-medium text-neutral-800 dark:text-neutral-200">{j.net}</span>
+                  </li>
+                ))}
+                {switchPreview.newNets.map((n, i) => (
+                  <li key={`n-${i}`}>
+                    Make a new net of <PinList pins={n.pins} />
+                  </li>
+                ))}
+                {switchPreview.renames.map((r) => (
+                  <li key={`r-${r.from}`}>
+                    Rename {r.from} to <span className="font-medium text-neutral-800 dark:text-neutral-200">{r.to}</span>, from a flag it would touch
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-neutral-400 dark:text-neutral-500">
+                Pins joining a net change what the stripboard has to wire up. You can undo the switch with Ctrl+Z.
+              </p>
             </div>
+          )}
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => setSwitchPreview(null)}
+              className="px-4 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+            >
+              Keep classic
+            </button>
+            <button
+              onClick={() => {
+                switchWiringToTouch();
+                setSwitchPreview(null);
+              }}
+              className="px-4 py-2 text-sm rounded bg-[#113768] text-white font-medium hover:bg-[#0d2a50] transition-colors"
+            >
+              Switch
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

@@ -11,6 +11,7 @@ import { useProjectStore } from "@/store/useProjectStore";
 import { useLibraryStore } from "@/store/useLibraryStore";
 import { track } from "@/lib/track";
 import SymbolRenderer from "./SymbolRenderer";
+import Modal from "@/components/Modal";
 
 type CellState = "body" | { pinId: string; pinName: string };
 type Cell = { row: number; col: number };
@@ -518,412 +519,410 @@ export default function CustomComponentEditor({ editing, libraryOnly = false, in
   const title = def ? `Edit ${def.name}` : "New custom part";
 
   return (
-    <div
-      className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4"
+    <Modal
+      onClose={cancel}
+      dismissible={false}
+      size="xl"
       onMouseUp={() => setDrag(null)}
+      className="font-sans max-h-[96vh] overflow-auto"
     >
-      <div
-        className="font-sans bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-full max-w-5xl max-h-[96vh] overflow-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="font-mono text-lg font-semibold text-neutral-900 dark:text-neutral-100">{title}</h2>
-          <button
-            onClick={cancel}
-            aria-label="Close"
-            className="text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-400 text-2xl leading-none"
-          >
-            ×
-          </button>
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="font-mono text-lg font-semibold text-neutral-900 dark:text-neutral-100">{title}</h2>
+        <button
+          onClick={cancel}
+          aria-label="Close"
+          className="text-neutral-400 dark:text-neutral-500 hover:text-neutral-600 dark:hover:text-neutral-400 text-2xl leading-none"
+        >
+          ×
+        </button>
+      </div>
+
+      {split ? (
+        <div className="max-w-xl">
+          <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-3">
+            Saved in this project only. {split.name} here no longer follows your library, and your library part stays as it was.
+          </p>
+          <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-5">
+            Keep this version as a new part in your library too?{projectSaves && " This also saves the project."}
+          </p>
+          {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+          <div className="flex gap-2 font-mono">
+            <button onClick={keepSplitInLibrary} disabled={busy} className={primary}>Add to my library</button>
+            <button onClick={cancel} disabled={busy} className={secondary}>No, done</button>
+          </div>
         </div>
+      ) : confirm ? (
+        <div className="max-w-xl">
+          <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-3">
+            {confirm.usage.length === 0
+              ? "No other project uses this part yet. Only your library changes."
+              : `This updates the part in your library and in ${
+                  confirm.usage.length > 1
+                    ? `these ${confirm.usage.length} projects`
+                    : confirm.usage[0].edit_uuid === editUuid ? "this project" : "one project"
+                }:`}
+          </p>
+          {confirm.usage.length > 0 && (
+            <ul className="text-sm text-neutral-700 dark:text-neutral-300 mb-3 max-h-60 overflow-auto border border-neutral-200 dark:border-neutral-700 rounded divide-y divide-neutral-200 dark:divide-neutral-700">
+              {confirm.usage.map((u) => (
+                <li key={u.edit_uuid} className="px-3 py-1.5 flex gap-2">
+                  <span className="truncate">{u.name}</span>
+                  {u.edit_uuid === editUuid && <span className="text-neutral-400">(open now)</span>}
+                  {u.placed > 0 && <span className="ml-auto shrink-0 text-neutral-500">{u.placed} placed</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-5">
+            Copies you changed in a single project are not touched. If the part now sits differently on the board, placed copies go back to the unplaced list.{projectSaves && " This project is saved along with it."}
+          </p>
+          <div className="flex gap-2 font-mono">
+            <button onClick={updateLibrary} disabled={busy} className={primary}>Update everywhere</button>
+            <button onClick={() => setConfirm(null)} disabled={busy} className={secondary}>Back</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {!def && (
+            <div className="flex gap-1 mb-5 font-mono text-sm" role="tablist">
+              {(["body", "grid"] as const).map((m) => (
+                <button
+                  key={m}
+                  role="tab"
+                  aria-selected={mode === m}
+                  onClick={() => setMode(m)}
+                  className={`px-4 py-1.5 rounded ${mode === m ? "bg-[#113768] text-white" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"}`}
+                >
+                  {m === "body" ? "From a body" : "Draw on a grid"}
+                </button>
+              ))}
+              <span className="ml-3 self-center font-sans text-xs text-neutral-500 dark:text-neutral-400">
+                {mode === "body"
+                  ? "An IC, a three-leg part or an op amp: pick the body, name the pins."
+                  : "Any shape: paint the body, put pins where the legs are."}
+              </span>
+            </div>
+          )}
 
-        {split ? (
-          <div className="max-w-xl">
-            <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-3">
-              Saved in this project only. {split.name} here no longer follows your library, and your library part stays as it was.
-            </p>
-            <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-5">
-              Keep this version as a new part in your library too?{projectSaves && " This also saves the project."}
-            </p>
-            {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
-            <div className="flex gap-2 font-mono">
-              <button onClick={keepSplitInLibrary} disabled={busy} className={primary}>Add to my library</button>
-              <button onClick={cancel} disabled={busy} className={secondary}>No, done</button>
-            </div>
-          </div>
-        ) : confirm ? (
-          <div className="max-w-xl">
-            <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-3">
-              {confirm.usage.length === 0
-                ? "No other project uses this part yet. Only your library changes."
-                : `This updates the part in your library and in ${
-                    confirm.usage.length > 1
-                      ? `these ${confirm.usage.length} projects`
-                      : confirm.usage[0].edit_uuid === editUuid ? "this project" : "one project"
-                  }:`}
-            </p>
-            {confirm.usage.length > 0 && (
-              <ul className="text-sm text-neutral-700 dark:text-neutral-300 mb-3 max-h-60 overflow-auto border border-neutral-200 dark:border-neutral-700 rounded divide-y divide-neutral-200 dark:divide-neutral-700">
-                {confirm.usage.map((u) => (
-                  <li key={u.edit_uuid} className="px-3 py-1.5 flex gap-2">
-                    <span className="truncate">{u.name}</span>
-                    {u.edit_uuid === editUuid && <span className="text-neutral-400">(open now)</span>}
-                    {u.placed > 0 && <span className="ml-auto shrink-0 text-neutral-500">{u.placed} placed</span>}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-5">
-              Copies you changed in a single project are not touched. If the part now sits differently on the board, placed copies go back to the unplaced list.{projectSaves && " This project is saved along with it."}
-            </p>
-            <div className="flex gap-2 font-mono">
-              <button onClick={updateLibrary} disabled={busy} className={primary}>Update everywhere</button>
-              <button onClick={() => setConfirm(null)} disabled={busy} className={secondary}>Back</button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {!def && (
-              <div className="flex gap-1 mb-5 font-mono text-sm" role="tablist">
-                {(["body", "grid"] as const).map((m) => (
-                  <button
-                    key={m}
-                    role="tab"
-                    aria-selected={mode === m}
-                    onClick={() => setMode(m)}
-                    className={`px-4 py-1.5 rounded ${mode === m ? "bg-[#113768] text-white" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"}`}
-                  >
-                    {m === "body" ? "From a body" : "Draw on a grid"}
-                  </button>
-                ))}
-                <span className="ml-3 self-center font-sans text-xs text-neutral-500 dark:text-neutral-400">
-                  {mode === "body"
-                    ? "An IC, a three-leg part or an op amp: pick the body, name the pins."
-                    : "Any shape: paint the body, put pins where the legs are."}
-                </span>
+          {/* One height for both tabs, so switching does not move the buttons */}
+          <div className="grid gap-6 md:grid-cols-[300px_1fr] md:h-[calc(94vh-230px)] md:min-h-[460px]">
+            {/* What the part is */}
+            <div className="space-y-3 md:overflow-auto md:pr-1">
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className={label}>Name</label>
+                  <input value={name} onChange={(e) => setName(e.target.value)} className={input} />
+                </div>
+                <div className="w-20">
+                  <label className={label}>Label prefix</label>
+                  <input value={prefix} onChange={(e) => setPrefix(e.target.value)} maxLength={3} className={`${input} text-center`} />
+                </div>
               </div>
-            )}
+              <div>
+                <label className={label}>Description (optional)</label>
+                <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What it is, for search" className={input} />
+              </div>
+              <div>
+                <label className={label}>Also list under</label>
+                <select value={group} onChange={(e) => setGroup(e.target.value)} className={input}>
+                  <option value="">Custom only</option>
+                  {COMPONENT_GROUP_LABELS.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </div>
 
-            {/* One height for both tabs, so switching does not move the buttons */}
-            <div className="grid gap-6 md:grid-cols-[300px_1fr] md:h-[calc(94vh-230px)] md:min-h-[460px]">
-              {/* What the part is */}
-              <div className="space-y-3 md:overflow-auto md:pr-1">
-                <div className="flex gap-2">
-                  <div className="flex-1">
-                    <label className={label}>Name</label>
-                    <input value={name} onChange={(e) => setName(e.target.value)} className={input} />
-                  </div>
-                  <div className="w-20">
-                    <label className={label}>Label prefix</label>
-                    <input value={prefix} onChange={(e) => setPrefix(e.target.value)} maxLength={3} className={`${input} text-center`} />
-                  </div>
-                </div>
+              {mode === "body" && (
                 <div>
-                  <label className={label}>Description (optional)</label>
-                  <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What it is, for search" className={input} />
-                </div>
-                <div>
-                  <label className={label}>Also list under</label>
-                  <select value={group} onChange={(e) => setGroup(e.target.value)} className={input}>
-                    <option value="">Custom only</option>
-                    {COMPONENT_GROUP_LABELS.map((g) => <option key={g} value={g}>{g}</option>)}
+                  <label className={label}>Body</label>
+                  <select value={bodyKind} onChange={(e) => chooseBody(e.target.value as BodyKind)} className={input}>
+                    {BODIES.map((b) => <option key={b.kind} value={b.kind}>{b.label}</option>)}
                   </select>
-                </div>
-
-                {mode === "body" && (
-                  <div>
-                    <label className={label}>Body</label>
-                    <select value={bodyKind} onChange={(e) => chooseBody(e.target.value as BodyKind)} className={input}>
-                      {BODIES.map((b) => <option key={b.kind} value={b.kind}>{b.label}</option>)}
-                    </select>
-                    {(bodyKind === "dip" || bodyKind === "sip") && (
-                      <div className="mt-2">
-                        <label className={label}>Pins</label>
-                        <select value={names.length} onChange={(e) => resize(Number(e.target.value))} className={input}>
-                          {(bodyKind === "dip" ? DIP_COUNTS : Array.from({ length: 39 }, (_, i) => i + 2)).map((n) => (
-                            <option key={n} value={n}>{n}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Schematic preview */}
-                <div>
-                  <span className={label}>Schematic</span>
-                  <svg
-                    viewBox={previewBox}
-                    className="w-full h-48 border border-neutral-200 dark:border-neutral-700 rounded bg-[var(--schematic-bg)]"
-                  >
-                    <g ref={previewRef}>
-                      <SymbolRenderer symbolId={previewSymbol} pinNames={previewNames} showPinLabels />
-                    </g>
-                  </svg>
-                </div>
-              </div>
-
-              {/* The pins */}
-              <div className="min-w-0 md:overflow-auto">
-                {mode === "body" ? (
-                  <>
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
-                      {bodyKind === "opamp"
-                        ? "The 741 pinout: pin 2 is the inverting input, 3 the non-inverting input, 4 V−, 6 the output, 7 V+. Pins 1, 5 and 8 are not drawn."
-                        : bodyKind === "to"
-                          ? "Name each leg in datasheet order and pick the side of the box it comes out of."
-                          : "Name the pins in datasheet order, pin 1 first."}
-                    </div>
-                    {bodyKind === "to" ? (
-                      <div className="space-y-1.5">
-                        {names.map((_, i) => (
-                          <div key={i} className="flex items-center gap-2">
-                            {pinField(i, "left")}
-                            <select
-                              value={sides[i]}
-                              onChange={(e) => setSides(sides.map((s, j) => (j === i ? (e.target.value as Side) : s)))}
-                              aria-label={`Pin ${i + 1} side`}
-                              className={`${input} w-28`}
-                            >
-                              {(Object.keys(SIDE_LABELS) as Side[]).map((s) => <option key={s} value={s}>{SIDE_LABELS[s]}</option>)}
-                            </select>
-                          </div>
+                  {(bodyKind === "dip" || bodyKind === "sip") && (
+                    <div className="mt-2">
+                      <label className={label}>Pins</label>
+                      <select value={names.length} onChange={(e) => resize(Number(e.target.value))} className={input}>
+                        {(bodyKind === "dip" ? DIP_COUNTS : Array.from({ length: 39 }, (_, i) => i + 2)).map((n) => (
+                          <option key={n} value={n}>{n}</option>
                         ))}
-                      </div>
-                    ) : bodyKind === "sip" ? (
-                      // One row of legs: drawn standing, pin 1 at the top
-                      <div className="flex items-stretch gap-3 w-fit">
-                        <div className="w-5 border-2 border-neutral-400 dark:border-neutral-500 rounded-sm" aria-hidden />
-                        <div className="flex flex-col gap-1.5">{names.map((_, i) => pinField(i, "left"))}</div>
-                      </div>
-                    ) : (
-                      // Pins as they sit on the chip seen from above: 1 at the
-                      // top left, down the left side, back up the right side
-                      <div className="flex items-stretch gap-3 w-fit">
-                        <div className="flex flex-col gap-1.5">
-                          {names.slice(0, names.length / 2).map((_, i) => pinField(i, "left"))}
-                        </div>
-                        <div className="relative w-20 border-2 border-neutral-400 dark:border-neutral-500 rounded-sm" aria-hidden>
-                          <div className="absolute left-1/2 -translate-x-1/2 -top-0.5 w-5 h-2.5 border-2 border-t-0 border-neutral-400 dark:border-neutral-500 rounded-b-full" />
-                        </div>
-                        <div className="flex flex-col gap-1.5">
-                          {names.map((_, i) => names.length - 1 - i).slice(0, names.length / 2).map((i) => pinField(i, "right"))}
-                        </div>
-                      </div>
-                    )}
-                    {bodyKind === "to" && !sidesTaken && (
-                      <div className="text-xs text-amber-600 mt-2">Each leg needs a side of its own.</div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="flex flex-wrap items-center gap-4 mb-2 font-mono text-sm text-neutral-700 dark:text-neutral-300">
-                      <div className="flex items-center gap-1">
-                        <span>Rows: {rows}</span>
-                        <button onClick={addRow} aria-label="Add a row" className="px-2.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">+</button>
-                        <button onClick={removeRow} aria-label="Remove the last row" className="px-2.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">−</button>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span>Cols: {cols}</span>
-                        <button onClick={addCol} aria-label="Add a column" className="px-2.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">+</button>
-                        <button onClick={removeCol} aria-label="Remove the last column" className="px-2.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">−</button>
-                      </div>
-                      <button
-                        onClick={() => select(gridPins.map((p) => `${p.offsetRow},${p.offsetCol}`))}
-                        disabled={gridPins.length === 0}
-                        className="px-2.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-40"
-                      >
-                        Select all pins
-                      </button>
+                      </select>
                     </div>
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
-                      One cell is one hole. Click an empty cell to add a pin there. Click a pin to select it, shift-click to select more, drag to move the selection, Del to remove it.
-                    </div>
-                    <div className="overflow-auto">
-                      {(() => {
-                        const targets = drag ? moveTargets(drag.from, drag.to) : null;
-                        const moved = drag !== null && (drag.from.row !== drag.to.row || drag.from.col !== drag.to.col);
-                        const landing = new Set(targets && moved ? targets.values() : []);
-                        const cellX = (c: number) => GRID_PADDING + c * (CELL_SIZE + CELL_GAP);
-                        const cellY = (r: number) => GRID_PADDING + r * (CELL_SIZE + CELL_GAP);
-                        return (
-                          <svg
-                            width={svgWidth}
-                            height={svgHeight}
-                            className="font-sans border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-800 select-none"
-                            onMouseUp={finishDrag}
-                            onMouseLeave={() => setDrag(null)}
+                  )}
+                </div>
+              )}
+
+              {/* Schematic preview */}
+              <div>
+                <span className={label}>Schematic</span>
+                <svg
+                  viewBox={previewBox}
+                  className="w-full h-48 border border-neutral-200 dark:border-neutral-700 rounded bg-[var(--schematic-bg)]"
+                >
+                  <g ref={previewRef}>
+                    <SymbolRenderer symbolId={previewSymbol} pinNames={previewNames} showPinLabels />
+                  </g>
+                </svg>
+              </div>
+            </div>
+
+            {/* The pins */}
+            <div className="min-w-0 md:overflow-auto">
+              {mode === "body" ? (
+                <>
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
+                    {bodyKind === "opamp"
+                      ? "The 741 pinout: pin 2 is the inverting input, 3 the non-inverting input, 4 V−, 6 the output, 7 V+. Pins 1, 5 and 8 are not drawn."
+                      : bodyKind === "to"
+                        ? "Name each leg in datasheet order and pick the side of the box it comes out of."
+                        : "Name the pins in datasheet order, pin 1 first."}
+                  </div>
+                  {bodyKind === "to" ? (
+                    <div className="space-y-1.5">
+                      {names.map((_, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          {pinField(i, "left")}
+                          <select
+                            value={sides[i]}
+                            onChange={(e) => setSides(sides.map((s, j) => (j === i ? (e.target.value as Side) : s)))}
+                            aria-label={`Pin ${i + 1} side`}
+                            className={`${input} w-28`}
                           >
-                            {grid.map((row, r) =>
-                              row.map((cell, c) => {
-                                const key = `${r},${c}`;
-                                const x = cellX(c);
-                                const y = cellY(r);
-                                const isPin = typeof cell === "object";
-                                const isSelected = selected.has(key);
-                                const leaving = moved && isSelected && targets !== null;
-                                const isEditingThis = editingPin?.row === r && editingPin?.col === c;
-                                return (
-                                  <g
-                                    key={key}
-                                    style={{ cursor: isPin ? "grab" : "pointer" }}
-                                    onClick={() => handleCellClick(r, c)}
-                                    onMouseDown={(e) => handleCellMouseDown(e, r, c)}
-                                    onMouseEnter={() => drag && setDrag({ ...drag, to: { row: r, col: c } })}
-                                  >
-                                    <rect
-                                      x={x} y={y} width={CELL_SIZE} height={CELL_SIZE} rx={4}
-                                      fill={leaving ? "#e5e5e5" : landing.has(key) ? "#efdcae" : isPin ? "#404040" : "#d4d4d4"}
-                                      stroke={isSelected || isEditingThis ? "#D4A853" : "#a3a3a3"}
-                                      strokeWidth={isSelected || isEditingThis ? 3 : 1}
-                                    />
-                                    {isPin && !leaving && (
-                                      <>
-                                        <circle cx={x + CELL_SIZE / 2} cy={y + CELL_SIZE / 2 - 4} r={5} fill="white" pointerEvents="none" />
-                                        <text x={x + CELL_SIZE / 2} y={y + CELL_SIZE / 2 + 10} textAnchor="middle" fontSize={7} fill="white" pointerEvents="none">
-                                          {cell.pinName}
-                                        </text>
-                                      </>
-                                    )}
-                                    {!isPin && <circle cx={x + CELL_SIZE / 2} cy={y + CELL_SIZE / 2} r={2.5} fill="#a3a3a3" pointerEvents="none" />}
-                                  </g>
-                                );
-                              })
-                            )}
-                            {/* Where the selection lands, or a red cell when it cannot go there */}
-                            {moved && targets && [...targets].map(([from, to]) => {
-                              const f = cellOf(from);
-                              const t = cellOf(to);
-                              const cell = grid[f.row][f.col];
+                            {(Object.keys(SIDE_LABELS) as Side[]).map((s) => <option key={s} value={s}>{SIDE_LABELS[s]}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  ) : bodyKind === "sip" ? (
+                    // One row of legs: drawn standing, pin 1 at the top
+                    <div className="flex items-stretch gap-3 w-fit">
+                      <div className="w-5 border-2 border-neutral-400 dark:border-neutral-500 rounded-sm" aria-hidden />
+                      <div className="flex flex-col gap-1.5">{names.map((_, i) => pinField(i, "left"))}</div>
+                    </div>
+                  ) : (
+                    // Pins as they sit on the chip seen from above: 1 at the
+                    // top left, down the left side, back up the right side
+                    <div className="flex items-stretch gap-3 w-fit">
+                      <div className="flex flex-col gap-1.5">
+                        {names.slice(0, names.length / 2).map((_, i) => pinField(i, "left"))}
+                      </div>
+                      <div className="relative w-20 border-2 border-neutral-400 dark:border-neutral-500 rounded-sm" aria-hidden>
+                        <div className="absolute left-1/2 -translate-x-1/2 -top-0.5 w-5 h-2.5 border-2 border-t-0 border-neutral-400 dark:border-neutral-500 rounded-b-full" />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        {names.map((_, i) => names.length - 1 - i).slice(0, names.length / 2).map((i) => pinField(i, "right"))}
+                      </div>
+                    </div>
+                  )}
+                  {bodyKind === "to" && !sidesTaken && (
+                    <div className="text-xs text-amber-600 mt-2">Each leg needs a side of its own.</div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center gap-4 mb-2 font-mono text-sm text-neutral-700 dark:text-neutral-300">
+                    <div className="flex items-center gap-1">
+                      <span>Rows: {rows}</span>
+                      <button onClick={addRow} aria-label="Add a row" className="px-2.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">+</button>
+                      <button onClick={removeRow} aria-label="Remove the last row" className="px-2.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">−</button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span>Cols: {cols}</span>
+                      <button onClick={addCol} aria-label="Add a column" className="px-2.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">+</button>
+                      <button onClick={removeCol} aria-label="Remove the last column" className="px-2.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700">−</button>
+                    </div>
+                    <button
+                      onClick={() => select(gridPins.map((p) => `${p.offsetRow},${p.offsetCol}`))}
+                      disabled={gridPins.length === 0}
+                      className="px-2.5 py-0.5 bg-neutral-100 dark:bg-neutral-800 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 disabled:opacity-40"
+                    >
+                      Select all pins
+                    </button>
+                  </div>
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
+                    One cell is one hole. Click an empty cell to add a pin there. Click a pin to select it, shift-click to select more, drag to move the selection, Del to remove it.
+                  </div>
+                  <div className="overflow-auto">
+                    {(() => {
+                      const targets = drag ? moveTargets(drag.from, drag.to) : null;
+                      const moved = drag !== null && (drag.from.row !== drag.to.row || drag.from.col !== drag.to.col);
+                      const landing = new Set(targets && moved ? targets.values() : []);
+                      const cellX = (c: number) => GRID_PADDING + c * (CELL_SIZE + CELL_GAP);
+                      const cellY = (r: number) => GRID_PADDING + r * (CELL_SIZE + CELL_GAP);
+                      return (
+                        <svg
+                          width={svgWidth}
+                          height={svgHeight}
+                          className="font-sans border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-800 select-none"
+                          onMouseUp={finishDrag}
+                          onMouseLeave={() => setDrag(null)}
+                        >
+                          {grid.map((row, r) =>
+                            row.map((cell, c) => {
+                              const key = `${r},${c}`;
+                              const x = cellX(c);
+                              const y = cellY(r);
+                              const isPin = typeof cell === "object";
+                              const isSelected = selected.has(key);
+                              const leaving = moved && isSelected && targets !== null;
+                              const isEditingThis = editingPin?.row === r && editingPin?.col === c;
                               return (
-                                <g key={`ghost-${from}`} pointerEvents="none" opacity={0.75}>
-                                  <rect x={cellX(t.col)} y={cellY(t.row)} width={CELL_SIZE} height={CELL_SIZE} rx={4} fill="#404040" stroke="#D4A853" strokeWidth={2} />
-                                  <circle cx={cellX(t.col) + CELL_SIZE / 2} cy={cellY(t.row) + CELL_SIZE / 2 - 4} r={5} fill="white" />
-                                  <text x={cellX(t.col) + CELL_SIZE / 2} y={cellY(t.row) + CELL_SIZE / 2 + 10} textAnchor="middle" fontSize={7} fill="white">
-                                    {typeof cell === "object" ? cell.pinName : ""}
-                                  </text>
+                                <g
+                                  key={key}
+                                  style={{ cursor: isPin ? "grab" : "pointer" }}
+                                  onClick={() => handleCellClick(r, c)}
+                                  onMouseDown={(e) => handleCellMouseDown(e, r, c)}
+                                  onMouseEnter={() => drag && setDrag({ ...drag, to: { row: r, col: c } })}
+                                >
+                                  <rect
+                                    x={x} y={y} width={CELL_SIZE} height={CELL_SIZE} rx={4}
+                                    fill={leaving ? "#e5e5e5" : landing.has(key) ? "#efdcae" : isPin ? "#404040" : "#d4d4d4"}
+                                    stroke={isSelected || isEditingThis ? "#D4A853" : "#a3a3a3"}
+                                    strokeWidth={isSelected || isEditingThis ? 3 : 1}
+                                  />
+                                  {isPin && !leaving && (
+                                    <>
+                                      <circle cx={x + CELL_SIZE / 2} cy={y + CELL_SIZE / 2 - 4} r={5} fill="white" pointerEvents="none" />
+                                      <text x={x + CELL_SIZE / 2} y={y + CELL_SIZE / 2 + 10} textAnchor="middle" fontSize={7} fill="white" pointerEvents="none">
+                                        {cell.pinName}
+                                      </text>
+                                    </>
+                                  )}
+                                  {!isPin && <circle cx={x + CELL_SIZE / 2} cy={y + CELL_SIZE / 2} r={2.5} fill="#a3a3a3" pointerEvents="none" />}
                                 </g>
                               );
-                            })}
-                            {moved && !targets && drag && (
-                              <rect
-                                x={cellX(drag.to.col)} y={cellY(drag.to.row)} width={CELL_SIZE} height={CELL_SIZE} rx={4}
-                                fill="none" stroke="#dc2626" strokeWidth={2} pointerEvents="none"
-                              />
-                            )}
-                          </svg>
-                        );
-                      })()}
+                            })
+                          )}
+                          {/* Where the selection lands, or a red cell when it cannot go there */}
+                          {moved && targets && [...targets].map(([from, to]) => {
+                            const f = cellOf(from);
+                            const t = cellOf(to);
+                            const cell = grid[f.row][f.col];
+                            return (
+                              <g key={`ghost-${from}`} pointerEvents="none" opacity={0.75}>
+                                <rect x={cellX(t.col)} y={cellY(t.row)} width={CELL_SIZE} height={CELL_SIZE} rx={4} fill="#404040" stroke="#D4A853" strokeWidth={2} />
+                                <circle cx={cellX(t.col) + CELL_SIZE / 2} cy={cellY(t.row) + CELL_SIZE / 2 - 4} r={5} fill="white" />
+                                <text x={cellX(t.col) + CELL_SIZE / 2} y={cellY(t.row) + CELL_SIZE / 2 + 10} textAnchor="middle" fontSize={7} fill="white">
+                                  {typeof cell === "object" ? cell.pinName : ""}
+                                </text>
+                              </g>
+                            );
+                          })}
+                          {moved && !targets && drag && (
+                            <rect
+                              x={cellX(drag.to.col)} y={cellY(drag.to.row)} width={CELL_SIZE} height={CELL_SIZE} rx={4}
+                              fill="none" stroke="#dc2626" strokeWidth={2} pointerEvents="none"
+                            />
+                          )}
+                        </svg>
+                      );
+                    })()}
+                  </div>
+
+                  {(editingPin || selected.size === 1) && (
+                    // Keyed so a new pin's form mounts afresh and its number field takes the focus
+                    <div key={editingPin ? `new-${editingPin.row},${editingPin.col}` : "selected"} className="flex flex-wrap gap-2 mt-3 items-end">
+                      <div>
+                        <label className={label}>Pin number</label>
+                        <input
+                          autoFocus={editingPin !== null}
+                          value={pinId}
+                          onChange={(e) => setPinId(e.target.value)}
+                          className={`${input} w-20`}
+                          onKeyDown={(e) => e.key === "Enter" && commitPin()}
+                        />
+                      </div>
+                      <div>
+                        <label className={label}>Pin name</label>
+                        <input
+                          value={pinName}
+                          onChange={(e) => setPinName(e.target.value)}
+                          className={`${input} w-32`}
+                          onKeyDown={(e) => e.key === "Enter" && commitPin()}
+                        />
+                      </div>
+                      <button onClick={commitPin} className={primary}>{editingPin ? "Add pin" : "Set"}</button>
+                      {editingPin && <button onClick={() => setEditingPin(null)} className={secondary}>Cancel</button>}
                     </div>
-
-                    {(editingPin || selected.size === 1) && (
-                      // Keyed so a new pin's form mounts afresh and its number field takes the focus
-                      <div key={editingPin ? `new-${editingPin.row},${editingPin.col}` : "selected"} className="flex flex-wrap gap-2 mt-3 items-end">
-                        <div>
-                          <label className={label}>Pin number</label>
-                          <input
-                            autoFocus={editingPin !== null}
-                            value={pinId}
-                            onChange={(e) => setPinId(e.target.value)}
-                            className={`${input} w-20`}
-                            onKeyDown={(e) => e.key === "Enter" && commitPin()}
-                          />
-                        </div>
-                        <div>
-                          <label className={label}>Pin name</label>
-                          <input
-                            value={pinName}
-                            onChange={(e) => setPinName(e.target.value)}
-                            className={`${input} w-32`}
-                            onKeyDown={(e) => e.key === "Enter" && commitPin()}
-                          />
-                        </div>
-                        <button onClick={commitPin} className={primary}>{editingPin ? "Add pin" : "Set"}</button>
-                        {editingPin && <button onClick={() => setEditingPin(null)} className={secondary}>Cancel</button>}
-                      </div>
-                    )}
-                    {!editingPin && selected.size > 0 && (
-                      <div className="flex flex-wrap items-center gap-2 mt-3 text-sm text-neutral-700 dark:text-neutral-300">
-                        {selected.size > 1 && <span>{selected.size} pins selected. Drag any of them to move them all.</span>}
-                        {confirmRemove ? (
-                          <>
-                            <span>Remove {selected.size === 1 ? "this pin" : `these ${selected.size} pins`}?</span>
-                            <button onClick={removeSelected} className="bg-red-500 dark:bg-red-600 text-white text-sm px-3 py-1.5 rounded hover:bg-red-600">Remove</button>
-                            <button onClick={() => setConfirmRemove(false)} className={secondary}>Keep</button>
-                          </>
-                        ) : (
-                          <button onClick={() => setConfirmRemove(true)} className={secondary}>
-                            {selected.size === 1 ? "Remove pin" : `Remove ${selected.size} pins`}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {gridPins.length === 0 && (
-                      <div className="text-xs text-amber-600 mt-2">Add at least one pin to make a part.</div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Where it goes */}
-            <div className="mt-6 pt-4 border-t border-neutral-200 dark:border-neutral-700 flex flex-wrap items-center gap-3">
-              {!def && !libraryOnly && (
-                <div className="flex items-center gap-4 text-sm text-neutral-700 dark:text-neutral-300">
-                  <label className="flex items-center gap-1.5">
-                    <input type="radio" checked={saveTo === "project"} onChange={() => setSaveTo("project")} />
-                    This project
-                  </label>
-                  <label className={`flex items-center gap-1.5 ${signedIn ? "" : "opacity-50"}`} title={signedIn ? undefined : "Log in to keep parts for all your projects"}>
-                    <input type="radio" checked={saveTo === "library"} onChange={() => setSaveTo("library")} disabled={!signedIn} />
-                    My library (all my projects)
-                  </label>
-                </div>
+                  )}
+                  {!editingPin && selected.size > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 mt-3 text-sm text-neutral-700 dark:text-neutral-300">
+                      {selected.size > 1 && <span>{selected.size} pins selected. Drag any of them to move them all.</span>}
+                      {confirmRemove ? (
+                        <>
+                          <span>Remove {selected.size === 1 ? "this pin" : `these ${selected.size} pins`}?</span>
+                          <button onClick={removeSelected} className="bg-red-500 dark:bg-red-600 text-white text-sm px-3 py-1.5 rounded hover:bg-red-600">Remove</button>
+                          <button onClick={() => setConfirmRemove(false)} className={secondary}>Keep</button>
+                        </>
+                      ) : (
+                        <button onClick={() => setConfirmRemove(true)} className={secondary}>
+                          {selected.size === 1 ? "Remove pin" : `Remove ${selected.size} pins`}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {gridPins.length === 0 && (
+                    <div className="text-xs text-amber-600 mt-2">Add at least one pin to make a part.</div>
+                  )}
+                </>
               )}
-              {def && editing?.where === "project" && signedIn && !linked && (
-                <label className="flex items-center gap-1.5 text-sm text-neutral-700 dark:text-neutral-300">
-                  <input type="checkbox" checked={alsoToLibrary} onChange={(e) => setAlsoToLibrary(e.target.checked)} />
-                  Also save it to my library
+            </div>
+          </div>
+
+          {/* Where it goes */}
+          <div className="mt-6 pt-4 border-t border-neutral-200 dark:border-neutral-700 flex flex-wrap items-center gap-3">
+            {!def && !libraryOnly && (
+              <div className="flex items-center gap-4 text-sm text-neutral-700 dark:text-neutral-300">
+                <label className="flex items-center gap-1.5">
+                  <input type="radio" checked={saveTo === "project"} onChange={() => setSaveTo("project")} />
+                  This project
                 </label>
-              )}
-              {error && <span className="text-sm text-red-600">{error}</span>}
-              {!changed && !alsoToLibrary && <span className="text-sm text-neutral-500 dark:text-neutral-400">No changes yet</span>}
-              {projectSaves && (linked || alsoToLibrary || (!def && saveTo === "library")) && (
-                <span className="text-xs text-neutral-500 dark:text-neutral-400">Changes to your library also save this project.</span>
-              )}
-
-              <div className="ml-auto flex flex-wrap justify-end gap-2 font-mono">
-                {!def && (
-                  <button onClick={saveTo === "library" ? saveNewToLibrary : saveInProject} disabled={!valid || busy} className={primary}>
-                    Create part
-                  </button>
-                )}
-                {def && linked && (
-                  <button onClick={reviewLibraryUpdate} disabled={!valid || !changed || busy} className={primary} title="Change the part in your library and in every project that uses it">
-                    Update Component in library and all projects…
-                  </button>
-                )}
-                {def && (linked || editing?.where === "project") && (
-                  <button
-                    onClick={saveInProject}
-                    disabled={!valid || !(changed || alsoToLibrary) || busy}
-                    className={linked ? secondary : primary}
-                    title={linked ? "Change it here only; it stops following the library" : undefined}
-                  >
-                    {linked ? "Update Component in this project only" : "Save"}
-                  </button>
-                )}
-                {def && !linked && editing?.where === "library" && (
-                  <button onClick={reviewLibraryUpdate} disabled={!valid || !changed || busy} className={primary}>
-                    Save…
-                  </button>
-                )}
-                <button onClick={cancel} className={secondary}>Cancel</button>
+                <label className={`flex items-center gap-1.5 ${signedIn ? "" : "opacity-50"}`} title={signedIn ? undefined : "Log in to keep parts for all your projects"}>
+                  <input type="radio" checked={saveTo === "library"} onChange={() => setSaveTo("library")} disabled={!signedIn} />
+                  My library (all my projects)
+                </label>
               </div>
+            )}
+            {def && editing?.where === "project" && signedIn && !linked && (
+              <label className="flex items-center gap-1.5 text-sm text-neutral-700 dark:text-neutral-300">
+                <input type="checkbox" checked={alsoToLibrary} onChange={(e) => setAlsoToLibrary(e.target.checked)} />
+                Also save it to my library
+              </label>
+            )}
+            {error && <span className="text-sm text-red-600">{error}</span>}
+            {!changed && !alsoToLibrary && <span className="text-sm text-neutral-500 dark:text-neutral-400">No changes yet</span>}
+            {projectSaves && (linked || alsoToLibrary || (!def && saveTo === "library")) && (
+              <span className="text-xs text-neutral-500 dark:text-neutral-400">Changes to your library also save this project.</span>
+            )}
+
+            <div className="ml-auto flex flex-wrap justify-end gap-2 font-mono">
+              {!def && (
+                <button onClick={saveTo === "library" ? saveNewToLibrary : saveInProject} disabled={!valid || busy} className={primary}>
+                  Create part
+                </button>
+              )}
+              {def && linked && (
+                <button onClick={reviewLibraryUpdate} disabled={!valid || !changed || busy} className={primary} title="Change the part in your library and in every project that uses it">
+                  Update Component in library and all projects…
+                </button>
+              )}
+              {def && (linked || editing?.where === "project") && (
+                <button
+                  onClick={saveInProject}
+                  disabled={!valid || !(changed || alsoToLibrary) || busy}
+                  className={linked ? secondary : primary}
+                  title={linked ? "Change it here only; it stops following the library" : undefined}
+                >
+                  {linked ? "Update Component in this project only" : "Save"}
+                </button>
+              )}
+              {def && !linked && editing?.where === "library" && (
+                <button onClick={reviewLibraryUpdate} disabled={!valid || !changed || busy} className={primary}>
+                  Save…
+                </button>
+              )}
+              <button onClick={cancel} className={secondary}>Cancel</button>
             </div>
-          </>
-        )}
-      </div>
-    </div>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }
