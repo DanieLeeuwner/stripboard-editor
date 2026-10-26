@@ -178,12 +178,12 @@ export default function NewProjectPage() {
   if (isMobile) {
     return (
       <div className="flex flex-col h-screen bg-[#fafafa] dark:bg-[#121212]">
-        <div className="bg-[#113768] text-white px-4 py-3">
+        <div className="bg-[#113768] text-white px-4 py-3 select-none">
           <a href="/" className="font-semibold tracking-wide hover:opacity-80 transition-opacity text-sm">
             Stripboard Editor
           </a>
         </div>
-        <div className="flex-1 flex items-center justify-center px-6">
+        <div className="flex-1 flex items-center justify-center px-6 select-none">
           <div className="text-center max-w-sm">
             <p className="text-lg font-semibold text-neutral-800 dark:text-neutral-200 mb-2">Desktop recommended</p>
             <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">

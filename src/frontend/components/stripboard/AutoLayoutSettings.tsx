@@ -92,7 +92,7 @@ export default function AutoLayoutSettings({ onClose }: { onClose: () => void })
       <div
         ref={panelRef}
         style={pos ? { top: pos.top, left: pos.left } : { visibility: "hidden" }}
-        className="fixed z-50 w-[31rem] max-w-[calc(100vw-1rem)] max-h-[calc(100vh-1rem)] overflow-y-auto rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 shadow-lg dark:shadow-neutral-900/50 p-4"
+        className="fixed z-50 w-[31rem] max-w-[calc(100vw-1rem)] max-h-[calc(100vh-1rem)] overflow-y-auto rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 shadow-lg dark:shadow-neutral-900/50 p-4 select-text"
       >
         <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Auto-layout settings</p>
         <div className="mt-3 border-t border-neutral-200 dark:border-neutral-700 pt-3">

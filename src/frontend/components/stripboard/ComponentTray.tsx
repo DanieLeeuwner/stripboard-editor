@@ -27,7 +27,7 @@ export default function ComponentTray({ readOnly = false }: { readOnly?: boolean
 
   if (readOnly) {
     return (
-      <div className="font-sans flex flex-col h-full overflow-y-auto">
+      <div className="font-sans flex flex-col h-full overflow-y-auto select-none">
         {incompleteNets.length > 0 ? (
           <>
             <div className="px-3.5 py-2.5 font-mono text-xs font-semibold text-red-500 dark:text-red-400 uppercase tracking-[0.15em]">
@@ -73,7 +73,7 @@ export default function ComponentTray({ readOnly = false }: { readOnly?: boolean
   }
 
   return (
-    <div className="font-sans flex flex-col h-full overflow-y-auto">
+    <div className="font-sans flex flex-col h-full overflow-y-auto select-none">
       {/* Unplaced components */}
       <div className="px-3.5 py-2.5 font-mono text-xs font-semibold text-[var(--copper)] uppercase tracking-[0.15em]">
         Unplaced
