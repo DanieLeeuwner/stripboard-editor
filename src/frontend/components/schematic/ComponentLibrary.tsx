@@ -194,6 +194,22 @@ function flagTiles(netLabels: NetLabel[]): { kind: NetLabelKind; name: string; s
   return tiles;
 }
 
+/** The expand/collapse arrow, a drawn chevron so its ink sits centred in the row */
+function GroupChevron({ open }: { open: boolean }) {
+  return (
+    <span className="w-3 shrink-0 flex items-center justify-center">
+      <svg
+        width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+        className={`transition-transform ${open ? "" : "-rotate-90"}`}
+        aria-hidden="true"
+      >
+        <path d="M6 9l6 6 6-6" />
+      </svg>
+    </span>
+  );
+}
+
 export default function ComponentLibrary() {
   const netLabels = useProjectStore((s) => s.netLabels);
   const removeComponentDef = useProjectStore((s) => s.removeComponentDef);
@@ -266,9 +282,9 @@ export default function ComponentLibrary() {
     <div className="mt-1.5 pt-1.5 border-t border-neutral-200 dark:border-neutral-700">
       <button
         onClick={() => toggleGroup("Custom")}
-        className="w-full flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+        className="w-full flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium text-left text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
       >
-        <span className="text-xs">{openGroups.has("Custom") ? "▼" : "▶"}</span>
+        <GroupChevron open={openGroups.has("Custom")} />
         Custom
         <span className="text-neutral-400 dark:text-neutral-500 ml-auto text-xs">{customDefs.length}</span>
       </button>
@@ -363,9 +379,9 @@ export default function ComponentLibrary() {
             <div>
               <button
                 onClick={() => toggleGroup(FLAGS_GROUP)}
-                className="w-full flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                className="w-full flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium text-left text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
               >
-                <span className="text-xs">{isOpen ? "▼" : "▶"}</span>
+                <GroupChevron open={isOpen} />
                 {FLAGS_GROUP}
                 <span className="text-neutral-400 dark:text-neutral-500 ml-auto text-xs">{tiles.length}</span>
               </button>
@@ -407,9 +423,9 @@ export default function ComponentLibrary() {
             <div key={group.label}>
               <button
                 onClick={() => toggleGroup(group.label)}
-                className="w-full flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                className="w-full flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium text-left text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
               >
-                <span className="text-xs">{isOpen ? "▼" : "▶"}</span>
+                <GroupChevron open={isOpen} />
                 {group.label}
                 <span className="text-neutral-400 dark:text-neutral-500 ml-auto text-xs">{parts.length}</span>
               </button>

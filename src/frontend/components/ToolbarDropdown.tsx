@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import DropdownButton from "./DropdownButton";
 
 export function Dropdown({
   label,
@@ -11,41 +11,15 @@ export function Dropdown({
   align?: "left" | "right";
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
-  }, [open]);
-
   return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="px-3.5 py-1.5 rounded transition-all text-sm bg-white/10 hover:bg-white/20 text-white inline-flex items-center gap-1.5"
-      >
-        {label}
-        <svg
-          width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
-          className="opacity-70" aria-hidden="true"
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </button>
-      {open && (
-        <div
-          className={`absolute ${align === "left" ? "left-0" : "right-0"} top-full mt-1 min-w-[11rem] max-h-[70vh] overflow-y-auto rounded-md bg-[#0d2b52] border border-white/15 shadow-xl py-1 z-50`}
-          onClick={() => setOpen(false)}
-        >
-          {children}
-        </div>
-      )}
-    </div>
+    <DropdownButton
+      label={label}
+      align={align}
+      buttonClassName="px-3.5 py-1.5 rounded transition-all text-sm bg-white/10 hover:bg-white/20 text-white inline-flex items-center gap-1.5"
+      menuClassName="min-w-[11rem] max-h-[70vh] overflow-y-auto rounded-md bg-[#0d2b52] border border-white/15 shadow-xl py-1 z-50"
+    >
+      {(close) => <div onClick={close}>{children}</div>}
+    </DropdownButton>
   );
 }
 

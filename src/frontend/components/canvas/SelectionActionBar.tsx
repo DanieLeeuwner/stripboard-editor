@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
+import DropdownButton from "../DropdownButton";
 
 export interface CanvasAction {
   /** Stable React key */
@@ -31,47 +32,30 @@ export interface CanvasMenuItem {
 }
 
 function MenuButton({ action }: { action: CanvasAction }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener("mousedown", away);
-    return () => window.removeEventListener("mousedown", away);
-  }, [open]);
-
   return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        title={action.title}
-        className="flex items-center gap-1.5 whitespace-nowrap text-xs px-2.5 py-1.5 rounded text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700"
-      >
-        {action.icon}
-        {action.label}
-        <span className="text-[9px] leading-none opacity-60">▼</span>
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full mt-1 min-w-[13rem] bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg dark:shadow-neutral-900/40 py-1 z-20">
-          {action.menu!.map((item) => (
-            <button
-              key={item.key}
-              title={item.title}
-              onClick={() => { item.onClick(); setOpen(false); }}
-              className={`w-full text-left text-xs px-3 py-1.5 flex items-center gap-2 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 ${
-                item.separated ? "border-t border-neutral-200 dark:border-neutral-700 mt-1 pt-2" : ""
-              }`}
-            >
-              <span className="w-3 text-[var(--accent)] dark:text-[var(--accent-light)]">{item.checked ? "✓" : ""}</span>
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <DropdownButton
+      title={action.title}
+      align="left"
+      label={<>{action.icon}{action.label}</>}
+      buttonClassName="flex items-center gap-1.5 whitespace-nowrap text-xs px-2.5 py-1.5 rounded text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+      menuClassName="min-w-[13rem] bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg dark:shadow-neutral-900/40 py-1 z-20"
+    >
+      {(close) =>
+        action.menu!.map((item) => (
+          <button
+            key={item.key}
+            title={item.title}
+            onClick={() => { item.onClick(); close(); }}
+            className={`w-full text-left text-xs px-3 py-1.5 flex items-center gap-2 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 ${
+              item.separated ? "border-t border-neutral-200 dark:border-neutral-700 mt-1 pt-2" : ""
+            }`}
+          >
+            <span className="w-3 text-[var(--accent)] dark:text-[var(--accent-light)]">{item.checked ? "✓" : ""}</span>
+            {item.label}
+          </button>
+        ))
+      }
+    </DropdownButton>
   );
 }
 
