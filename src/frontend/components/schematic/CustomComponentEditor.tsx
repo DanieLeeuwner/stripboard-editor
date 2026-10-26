@@ -525,7 +525,7 @@ export default function CustomComponentEditor({ editing, libraryOnly = false, in
       onMouseUp={() => setDrag(null)}
     >
       <div
-        className="font-sans bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-6 w-full max-w-5xl max-h-[96vh] overflow-auto"
+        className="font-sans bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-6 w-full max-w-5xl max-h-[96vh] overflow-auto select-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">

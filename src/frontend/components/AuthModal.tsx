@@ -81,7 +81,7 @@ export default function AuthModal({
       onClick={onClose}
     >
       <div
-        className={`bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] mx-4 sm:mx-0 ${
+        className={`bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] mx-4 sm:mx-0 select-none ${
           mode === "register" ? "sm:w-96 max-w-md" : "sm:w-80 max-w-sm"
         }`}
         onClick={(e) => e.stopPropagation()}

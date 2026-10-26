@@ -183,7 +183,7 @@ export default function StripboardFootprintEditor({ componentId, onClose }: Prop
       onMouseUp={handleMouseUp}
     >
       <div
-        className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-5 max-w-lg max-h-[90vh] overflow-auto"
+        className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-5 max-w-lg max-h-[90vh] overflow-auto select-text"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-6 mb-5">

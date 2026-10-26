@@ -253,7 +253,7 @@ export default function ProjectToolbar({ editUuid, viewUuid, onSave, saving, las
 
   return (
     <>
-      <div className="h-12 bg-[#113768] text-white flex items-center px-5 gap-4 justify-between text-sm border-b-2 border-[var(--copper)] whitespace-nowrap">
+      <div className="h-12 bg-[#113768] text-white flex items-center px-5 gap-4 justify-between text-sm border-b-2 border-[var(--copper)] whitespace-nowrap select-none">
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={handleExit}

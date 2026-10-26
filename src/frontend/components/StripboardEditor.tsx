@@ -333,7 +333,7 @@ export default function StripboardEditor({ readOnly = false, hideSidebar = false
 
   return (
     <div
-      className="relative flex h-full flex-col"
+      className="relative flex h-full flex-col select-none"
       onMouseDownCapture={readOnly ? undefined : () => setActiveEditor("stripboard")}
     >
       {!hideSidebar && <div className="border-b border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 px-5 h-12 font-semibold text-sm text-[#113768] dark:text-[#5b9bd5] flex items-center justify-between">
@@ -475,7 +475,7 @@ export default function StripboardEditor({ readOnly = false, hideSidebar = false
           onMouseLeave={scheduleAutoMsgDismiss}
         >
           <div className="flex items-start gap-3 rounded-md border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-4 py-3 shadow-lg dark:shadow-neutral-900/50">
-            <div className="flex-1">
+            <div className="flex-1 select-text">
               <p className="text-sm text-neutral-700 dark:text-neutral-200 leading-snug">
                 {autoFinishMsg}
               </p>
