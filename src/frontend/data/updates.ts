@@ -8,6 +8,17 @@ export interface Update {
 
 export const UPDATES: Update[] = [
   {
+    date: "2026-10-26",
+    items: [
+      "Version control for projects: try an idea on a branch, keep it up to date with main and merge it back with a review of every change.",
+    ],
+    link: {
+      href: "/how-branches-work",
+      lead: "A step-by-step example:",
+      text: "How branches work.",
+    },
+  },
+  {
     date: "2026-09-29",
     items: [
       "Auto-layout is a lot faster (and even a bit better). Most circuits are done in a few seconds instead of about a minute, and large ones get a more thorough search.",
@@ -159,5 +170,6 @@ export const UPDATES: Update[] = [
 ];
 
 export const PLANNED: string[] = [
+  "Support for more board types than plain parallel strips, such as breadboard-style stripboard.",
   "Net list import, the other half of the KiCad compatibility: bring a circuit in from an EDA tool and lay it out on stripboard. Export is already available.",
 ];
