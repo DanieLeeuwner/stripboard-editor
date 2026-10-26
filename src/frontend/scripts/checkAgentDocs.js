@@ -15,6 +15,7 @@ const crypto = require("crypto");
 const PAIRS = [
   ["GUIDE_MD", "app/guide/page.tsx"],
   ["AUTO_LAYOUT_MD", "app/how-auto-layout-works/page.tsx"],
+  ["BRANCHES_MD", "app/how-branches-work/page.tsx"],
   ["INDEX_MD", "app/HomeClient.tsx"],
   ["PRIVACY_MD", "app/privacy/page.tsx"],
   // UPDATES_MD is generated from data/updates.ts, so it cannot drift.

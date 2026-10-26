@@ -16,7 +16,7 @@ import csv
 from django.core.management.base import BaseCommand
 
 from projects.migrations_data.pipeline import migrate_to_current
-from projects.models import Project
+from projects.models import Branch
 
 
 class Command(BaseCommand):
@@ -29,9 +29,11 @@ class Command(BaseCommand):
         parser.add_argument("--report", type=str, default=None, help="Write CSV report to this path")
 
     def handle(self, *args, **opts):
-        qs = Project.objects.all().order_by("created_at")
+        # Every branch holds its own copy of a design; merge bases are
+        # brought up to date as they are read
+        qs = Branch.objects.select_related("project").order_by("created_at")
         if opts["project"]:
-            qs = qs.filter(edit_uuid=opts["project"])
+            qs = qs.filter(project__edit_uuid=opts["project"])
         if opts["limit"]:
             qs = qs[: opts["limit"]]
 
@@ -40,10 +42,11 @@ class Command(BaseCommand):
         failed = 0
         report_rows = []
 
-        for project in qs:
+        for branch in qs:
+            project = branch.project
             try:
-                before = len((project.data or {}).get("schematicWires") or [])
-                data, changed = migrate_to_current(project.data)
+                before = len((branch.data or {}).get("schematicWires") or [])
+                data, changed = migrate_to_current(branch.data)
                 after = len(data.get("schematicWires") or []) if isinstance(data, dict) else before
                 if not changed:
                     skipped += 1
@@ -52,8 +55,8 @@ class Command(BaseCommand):
                 if opts["dry_run"]:
                     self.stdout.write(f"  [{project.pk}] would migrate: {project.name} ({before} -> {after} wires)")
                 else:
-                    project.data = data
-                    project.save(update_fields=["data"])
+                    branch.data = data
+                    branch.save(update_fields=["data"])
                 migrated += 1
                 report_rows.append((project.edit_uuid, project.owner_id, project.name, True, before, after))
             except Exception as e:

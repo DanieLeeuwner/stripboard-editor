@@ -494,7 +494,7 @@ export default function ComponentLibrary() {
           onClick={() => setDeleteConfirm(null)}
         >
           <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
+            className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Delete Custom Component</h2>

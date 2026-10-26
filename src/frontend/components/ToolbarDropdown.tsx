@@ -2,7 +2,15 @@
 
 import { useRef, useState, useEffect } from "react";
 
-export function Dropdown({ label, children }: { label: string; children: React.ReactNode }) {
+export function Dropdown({
+  label,
+  align = "right",
+  children,
+}: {
+  label: React.ReactNode;
+  align?: "left" | "right";
+  children: React.ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -31,7 +39,7 @@ export function Dropdown({ label, children }: { label: string; children: React.R
       </button>
       {open && (
         <div
-          className="absolute right-0 top-full mt-1 min-w-[11rem] rounded-md bg-[#0d2b52] border border-white/15 shadow-xl py-1 z-50"
+          className={`absolute ${align === "left" ? "left-0" : "right-0"} top-full mt-1 min-w-[11rem] max-h-[70vh] overflow-y-auto rounded-md bg-[#0d2b52] border border-white/15 shadow-xl py-1 z-50`}
           onClick={() => setOpen(false)}
         >
           {children}

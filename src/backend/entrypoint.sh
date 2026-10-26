@@ -4,6 +4,10 @@ set -e
 echo "Running migrations..."
 python manage.py migrate --noinput
 
+echo "Moving project data into main branches..."
+# Fatal on purpose: every request reads a project's data from its branches.
+python manage.py create_main_branches
+
 echo "Migrating project data..."
 # Brings stored projects up to the current schema before any request is served,
 # so a deploy never leaves the frontend reading rows older than it understands.

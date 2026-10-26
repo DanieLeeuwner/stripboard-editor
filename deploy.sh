@@ -28,5 +28,6 @@ fi
 
 docker image prune -af
 
-# A week, so the nightly run still finds its cache (a full rebuild would recreate the containers)
-docker builder prune -af --filter until=168h
+# Size cap, least recently used goes first: the nightly run keeps its cache (a full rebuild
+# would recreate the containers). The 'until' filter removes nothing with Docker 29's containerd store.
+docker builder prune -af --max-used-space 5GB

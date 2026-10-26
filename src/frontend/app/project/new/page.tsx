@@ -9,9 +9,11 @@ import { loadDraft, saveDraft, clearDraft, draftAge, type ProjectDraft } from "@
 import SchematicEditor from "@/components/SchematicEditor";
 import StripboardEditor from "@/components/StripboardEditor";
 import ProjectToolbar from "@/components/ProjectToolbar";
+import { useBranches } from "@/hooks/useBranches";
 import SplitPane from "@/components/SplitPane";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import ShortcutOverlay from "@/components/ShortcutOverlay";
+import { tell } from "@/lib/dialog";
 
 export default function NewProjectPage() {
   const isMobile = useIsMobile();
@@ -45,8 +47,10 @@ export default function NewProjectPage() {
   const [viewUuid, setViewUuid] = useState<string | null>(null);
   const [draftPrompt, setDraftPrompt] = useState<ProjectDraft | null>(null);
   const firstEditRef = useRef(false);
-  const savingRef = useRef(false);
   const rerunRef = useRef(false);
+  // The project gets its branches with the first save
+  const branches = useBranches(editUuid);
+  const { adopt, noteSaved, rescue, branchRef, savingRef } = branches;
 
   // Offer to restore a previous unsaved design, but only over a fresh/empty
   // editor (resetProject runs before we land here on a normal "new project").
@@ -87,7 +91,7 @@ export default function NewProjectPage() {
       try {
         project = (await migrateProjectData(project)) as Project;
       } catch {
-        alert("Could not restore the previous design: migrating it to the current version failed.");
+        void tell("Restore failed", "Could not restore the previous design: bringing it up to the current version failed.");
         return;
       }
     }
@@ -125,6 +129,7 @@ export default function NewProjectPage() {
         );
         setEditUuid(project.edit_uuid);
         setViewUuid(project.view_uuid);
+        adopt(project, false);
         // Now persisted server-side — the local draft is no longer needed.
         clearDraft();
         // Replace URL without full reload so state is preserved
@@ -132,14 +137,23 @@ export default function NewProjectPage() {
       } else {
         // Subsequent saves: update existing
         const { saveProject } = await import("@/lib/api");
-        await saveProject(editUuid, projectData.name, projectData as unknown as Record<string, unknown>);
+        noteSaved(await saveProject(
+          editUuid, projectData.name, projectData as unknown as Record<string, unknown>, branchRef.current ?? undefined,
+        ));
       }
       if (useProjectStore.getState()._editSeq === seq) markClean();
       setLastSaved(new Date());
       setSaveError(false);
       ok = true;
-    } catch {
-      setSaveError(true);
+    } catch (e) {
+      // The open branch may be gone: merged or deleted in another tab
+      if (await rescue(e)) {
+        setLastSaved(new Date());
+        setSaveError(false);
+        ok = true;
+      } else {
+        setSaveError(true);
+      }
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -149,7 +163,16 @@ export default function NewProjectPage() {
       void handleSave();
     }
     return ok;
-  }, [editUuid, exportProject, markClean]);
+  }, [editUuid, exportProject, markClean, adopt, noteSaved, rescue, branchRef, savingRef]);
+
+  // Once stored, the project saves the same way as in the editor: for a
+  // change to the user's part library, and before switching branches
+  const setSaveNow = useProjectStore((s) => s.setSaveNow);
+  useEffect(() => {
+    if (!editUuid) return;
+    setSaveNow(handleSave);
+    return () => setSaveNow(null);
+  }, [editUuid, handleSave, setSaveNow]);
 
   // Toggling auto-save persists the flag right away. On an unsaved project this
   // first save is the create, so enabling auto-save also persists the project.
@@ -167,7 +190,8 @@ export default function NewProjectPage() {
     const unsub = useProjectStore.subscribe((state) => {
       if (!state.isDirty) return;
       clearTimeout(timeout);
-      timeout = setTimeout(() => { void handleSave(); }, 1000); // debounce 1s after the last edit
+      // debounce 1s after the last edit; by then a branch switch may have saved it already
+      timeout = setTimeout(() => { if (useProjectStore.getState().isDirty) void handleSave(); }, 1000);
     });
     return () => {
       unsub();
@@ -212,6 +236,7 @@ export default function NewProjectPage() {
         saveError={saveError}
         autoSave={autoSave}
         onToggleAutoSave={handleToggleAutoSave}
+        branches={branches.controls}
       />
       {draftPrompt && (
         <div className="flex items-center gap-3 border-y-2 border-red-500 bg-red-50 dark:bg-red-950/40 px-4 py-2 text-sm">

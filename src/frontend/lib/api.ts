@@ -97,10 +97,60 @@ export interface ProjectPage {
   next: string | null;
 }
 
-export interface ProjectDetail extends ProjectMeta {
+/** A branch as the history list and graph show it. `parent` is a branch of
+ *  the same project; a fork's main instead has `upstream` set, following
+ *  the original project's main. */
+export interface BranchMeta {
+  id: string;
+  name: string;
+  parent: string | null;
+  upstream: boolean;
+  is_main: boolean;
+  // The parent was saved since the two last met: it has changes to take in
+  parent_changed: boolean;
+  // Merged into its parent: done, kept only for the history
+  closed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MergeMeta {
+  // null when that branch was deleted since, or (source) is the original project's
+  source: string | null;
+  target: string | null;
+  source_name: string;
+  target_name: string;
+  created_at: string;
+}
+
+export interface ProjectHistory {
+  branches: BranchMeta[];
+  merges: MergeMeta[];
+}
+
+/** One branch of a project, as the editor loads it. */
+export interface ProjectDetail extends ProjectMeta, ProjectHistory {
   data: Record<string, unknown>;
   owner_name: string | null;
+  branch: string;
+  branch_version: string;
+  main_branch: string;
+  active_branch: string;
+  // A fork: the project it follows, by its view link
+  upstream: { view_uuid: string; name: string; branch: string } | null;
 }
+
+/** One branch of a project, as a view link shows it. */
+export interface ProjectView extends ProjectHistory {
+  view_uuid: string;
+  name: string;
+  owner_name: string | null;
+  branch: string;
+  data: Record<string, unknown>;
+  main_branch: string;
+}
+
+const branchQuery = (branch?: string) => (branch ? `?branch=${encodeURIComponent(branch)}` : "");
 
 export async function createProject(name: string, data: Record<string, unknown>): Promise<ProjectDetail> {
   const pow = await getPoWSolution();
@@ -112,18 +162,38 @@ export async function createProject(name: string, data: Record<string, unknown>)
   return res.json();
 }
 
-export async function getProject(editUuid: string): Promise<ProjectDetail> {
-  const res = await apiFetch(`/projects/${editUuid}/`);
+/** One branch of the project ("active" for the one last worked on); main when none is named. */
+export async function getProject(editUuid: string, branch?: string): Promise<ProjectDetail> {
+  const res = await apiFetch(`/projects/${editUuid}/${branchQuery(branch)}`);
   if (!res.ok) throw new Error("Project not found");
   return res.json();
 }
 
-export async function saveProject(editUuid: string, name: string, data: Record<string, unknown>): Promise<ProjectDetail> {
+/** A failed request, with the status and the server's `code` when it sent one. */
+export class ApiError extends Error {
+  constructor(message: string, public status: number, public code?: string) {
+    super(message);
+  }
+}
+
+/** What a save answers: the branch's new version and the history, not the design. */
+export interface SaveResult extends ProjectHistory {
+  branch: string;
+  branch_version: string;
+  updated_at: string;
+}
+
+export async function saveProject(
+  editUuid: string, name: string, data: Record<string, unknown>, branch?: string,
+): Promise<SaveResult> {
   const res = await apiFetch(`/projects/${editUuid}/`, {
     method: "PUT",
-    body: JSON.stringify({ name, data }),
+    body: JSON.stringify({ name, data, ...(branch ? { branch } : {}) }),
   });
-  if (!res.ok) throw new Error("Failed to save project");
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new ApiError(body?.error ?? "Failed to save project", res.status, body?.code);
+  }
   return res.json();
 }
 
@@ -150,8 +220,74 @@ export async function renameProject(editUuid: string, name: string): Promise<str
   return (await res.json()).name;
 }
 
-export async function getProjectView(viewUuid: string): Promise<ProjectDetail> {
-  const res = await apiFetch(`/projects/view/${viewUuid}/`);
+// ── Branches ─────────────────────────────────────────
+
+/** A new branch holding a copy of `from`; it becomes the active one. */
+export async function createBranch(editUuid: string, name: string, from: string): Promise<ProjectDetail> {
+  const res = await apiFetch(`/projects/${editUuid}/branches/`, {
+    method: "POST",
+    body: JSON.stringify({ name, from }),
+  });
+  if (!res.ok) throw new Error(await errorText(res, "Failed to create the branch"));
+  return res.json();
+}
+
+export async function renameBranch(editUuid: string, id: string, name: string): Promise<ProjectHistory> {
+  const res = await apiFetch(`/projects/${editUuid}/branches/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(await errorText(res, "Failed to rename the branch"));
+  return res.json();
+}
+
+export async function deleteBranch(editUuid: string, id: string): Promise<void> {
+  const res = await apiFetch(`/projects/${editUuid}/branches/${id}/`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await errorText(res, "Failed to delete the branch"));
+}
+
+export interface MergeSide {
+  id: string;
+  name: string;
+  version: string;
+  data: Record<string, unknown>;
+}
+
+/** The three states a merge works on: the branches' last common state and both as they are now. */
+export interface MergePrep {
+  kind: "from-parent" | "into-parent";
+  base: Record<string, unknown>;
+  source: MergeSide;
+  target: MergeSide;
+}
+
+export async function getMergePrep(editUuid: string, target: string, source: string): Promise<MergePrep> {
+  const res = await apiFetch(`/projects/${editUuid}/branches/${target}/merge/?source=${encodeURIComponent(source)}`);
+  if (!res.ok) throw new Error(await errorText(res, "These branches cannot be merged"));
+  return res.json();
+}
+
+/** Saves a merged design to the target branch; refused when either branch changed since getMergePrep. */
+export async function commitMerge(
+  editUuid: string, prep: MergePrep, data: Record<string, unknown>,
+): Promise<ProjectDetail> {
+  const res = await apiFetch(`/projects/${editUuid}/branches/${prep.target.id}/merge/`, {
+    method: "POST",
+    body: JSON.stringify({
+      source: prep.source.id, data, source_version: prep.source.version, target_version: prep.target.version,
+    }),
+  });
+  if (!res.ok) throw new Error(await errorText(res, "The merge could not be saved"));
+  return res.json();
+}
+
+/** Remembers the branch as the one the editor reopens. */
+export async function activateBranch(editUuid: string, id: string): Promise<void> {
+  await apiFetch(`/projects/${editUuid}/branches/${id}/activate/`, { method: "POST" });
+}
+
+export async function getProjectView(viewUuid: string, branch?: string): Promise<ProjectView> {
+  const res = await apiFetch(`/projects/view/${viewUuid}/${branchQuery(branch)}`);
   if (!res.ok) throw new Error("Project not found");
   return res.json();
 }
@@ -240,11 +376,13 @@ export async function createLibraryPart(part: ComponentDef): Promise<LibraryPart
 export async function updateLibraryPart(
   id: string,
   part: ComponentDef,
-  opts: { updateProjects: boolean; skipProject?: string },
+  opts: { updateProjects: boolean; skipProject?: string; skipBranch?: string },
 ): Promise<LibraryPart & { updated_projects: number }> {
   const res = await apiFetch(`/users/me/parts/${id}/`, {
     method: "PUT",
-    body: JSON.stringify({ part, update_projects: opts.updateProjects, skip_project: opts.skipProject }),
+    body: JSON.stringify({
+      part, update_projects: opts.updateProjects, skip_project: opts.skipProject, skip_branch: opts.skipBranch,
+    }),
   });
   if (!res.ok) throw new Error(await errorText(res, "Failed to save the part"));
   return res.json();

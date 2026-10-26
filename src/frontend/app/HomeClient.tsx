@@ -24,6 +24,7 @@ import { track } from "@/lib/track";
 import SiteHeader from "@/components/SiteHeader";
 import AuthModal from "@/components/AuthModal";
 import PasswordInput from "@/components/PasswordInput";
+import { tell } from "@/lib/dialog";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -101,7 +102,7 @@ export default function HomeClient({
       track(mode === "rename" ? "project-rename" : "project-duplicate", { source: "home" });
       setNameDialog(null);
     } catch (e) {
-      alert(e instanceof Error ? e.message : `Couldn't ${mode} the project.`);
+      void tell(`Couldn't ${mode} the project`, e instanceof Error ? e.message : "Please try again.");
     } finally {
       setNameBusy(false);
     }
@@ -566,7 +567,7 @@ export default function HomeClient({
           onClick={() => setShowChangePassword(false)}
         >
           <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
+            className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-4">Change Password</h2>
@@ -634,7 +635,7 @@ export default function HomeClient({
           onClick={() => setShowEmailModal(false)}
         >
           <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
+            className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Recovery email</h2>
@@ -701,7 +702,7 @@ export default function HomeClient({
           onClick={() => setShowAccountDelete(false)}
         >
           <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-96"
+            className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-6 w-96"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Delete Account</h2>
@@ -739,7 +740,7 @@ export default function HomeClient({
           onClick={() => setNameDialog(null)}
         >
           <form
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
+            className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
             onClick={(e) => e.stopPropagation()}
             onSubmit={(e) => { e.preventDefault(); void handleNameSubmit(); }}
           >
@@ -782,7 +783,7 @@ export default function HomeClient({
           onClick={() => setDeleteConfirm(null)}
         >
           <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
+            className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-6 w-[calc(100%-2rem)] sm:w-80 max-w-sm mx-4 sm:mx-0"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Delete Project</h2>

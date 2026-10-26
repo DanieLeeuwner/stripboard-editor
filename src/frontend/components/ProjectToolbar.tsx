@@ -13,6 +13,9 @@ import AuthModal from "./AuthModal";
 import ProjectNotesPanel from "./ProjectNotesPanel";
 import ExportMenu from "./ExportMenu";
 import { Dropdown, DropdownItem } from "./ToolbarDropdown";
+import BranchChip from "./branches/BranchChip";
+import type { BranchControls } from "./branches/BranchDialog";
+import { confirmAction, tell } from "@/lib/dialog";
 
 interface Props {
   editUuid?: string;
@@ -23,6 +26,8 @@ interface Props {
   saveError?: boolean;
   autoSave?: boolean;
   onToggleAutoSave?: () => void;
+  // A stored project's branches; absent for a draft not saved yet
+  branches?: BranchControls | null;
 }
 
 function FeedbackButton({
@@ -75,7 +80,7 @@ function isValidProjectShape(d: unknown): boolean {
   return true;
 }
 
-export default function ProjectToolbar({ editUuid, viewUuid, onSave, saving, lastSaved, saveError, autoSave, onToggleAutoSave }: Props) {
+export default function ProjectToolbar({ editUuid, viewUuid, onSave, saving, lastSaved, saveError, autoSave, onToggleAutoSave, branches }: Props) {
   const router = useRouter();
   const name = useProjectStore((s) => s.name);
   const undo = useProjectStore((s) => s.undo);
@@ -178,16 +183,20 @@ export default function ProjectToolbar({ editUuid, viewUuid, onSave, saving, las
       try {
         data = JSON.parse(ev.target?.result as string);
       } catch {
-        alert("Invalid project file: not valid JSON.");
+        void tell("Import failed", "This file is not a valid project file: it is not valid JSON.");
         return;
       }
       if (!isValidProjectShape(data)) {
-        alert("This file doesn't look like a Stripboard Editor project.");
+        void tell("Import failed", "This file doesn't look like a Stripboard Editor project.");
         return;
       }
       if (
         useProjectStore.getState().isDirty &&
-        !window.confirm("Importing replaces your current project. You have unsaved changes — continue? (You can still undo with Ctrl+Z.)")
+        !(await confirmAction(
+          "Replace the project?",
+          "Importing replaces your current project, and you have unsaved changes. You can still undo the import with Ctrl+Z.",
+          "Import",
+        ))
       ) {
         return;
       }
@@ -197,7 +206,7 @@ export default function ProjectToolbar({ editUuid, viewUuid, onSave, saving, las
         try {
           data = await migrateProjectData(data);
         } catch {
-          alert("Failed to migrate imported project to the current version.");
+          void tell("Import failed", "The imported project could not be brought up to the current version.");
           return;
         }
       }
@@ -244,8 +253,8 @@ export default function ProjectToolbar({ editUuid, viewUuid, onSave, saving, las
 
   return (
     <>
-      <div className="h-12 bg-[#113768] text-white flex items-center px-5 justify-between text-sm border-b-2 border-[var(--copper)]">
-        <div className="flex items-center gap-3">
+      <div className="h-12 bg-[#113768] text-white flex items-center px-5 gap-4 justify-between text-sm border-b-2 border-[var(--copper)] whitespace-nowrap">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={handleExit}
             className="font-mono font-semibold tracking-wide hover:opacity-80 transition-opacity"
@@ -267,11 +276,11 @@ export default function ProjectToolbar({ editUuid, viewUuid, onSave, saving, las
             />
           ) : (
             <span
-              className="inline-flex items-center gap-1 opacity-80 cursor-pointer hover:opacity-100 transition-opacity"
+              className="inline-flex items-center gap-1 min-w-0 opacity-80 cursor-pointer hover:opacity-100 transition-opacity"
               onClick={() => setEditingName(true)}
-              title="Click to rename"
+              title={`${name} (click to rename)`}
             >
-              {name}
+              <span className="truncate max-w-[20rem]">{name}</span>
               <svg
                 width="11" height="11" viewBox="0 0 24 24" fill="none"
                 stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
@@ -283,15 +292,16 @@ export default function ProjectToolbar({ editUuid, viewUuid, onSave, saving, las
               </svg>
             </span>
           )}
+          {branches && <BranchChip controls={branches} source="edit" />}
           {saveError ? (
             <span className="text-red-300 font-medium">Save failed</span>
           ) : lastSaved ? (
-            <span className="font-mono opacity-40">
-              saved {lastSaved.toLocaleTimeString()}
+            <span className="font-mono opacity-40" title={`saved ${lastSaved.toLocaleTimeString()}`}>
+              saved {lastSaved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
           ) : null}
         </div>
-        <div className="flex items-center gap-2 font-mono">
+        <div className="flex items-center gap-2 font-mono flex-shrink-0">
           <button
             onClick={undo}
             disabled={!canUndo}
@@ -352,8 +362,9 @@ export default function ProjectToolbar({ editUuid, viewUuid, onSave, saving, las
             className={`px-3.5 py-1.5 rounded transition-all text-sm text-white ${
               showNotes ? "bg-white/25" : "bg-white/10 hover:bg-white/20"
             }`}
+            title="Description and notes"
           >
-            Description &amp; Notes
+            Notes
           </button>
           <FeedbackButton
             onClick={() => { track("print-open", { source: "edit" }); setShowPrint(true); }}
@@ -374,15 +385,9 @@ export default function ProjectToolbar({ editUuid, viewUuid, onSave, saving, las
           />
           <span className="opacity-20">|</span>
           {user ? (
-            <>
-              <span className="opacity-70 text-sm">{user.username}</span>
-              <button
-                onClick={handleLogout}
-                className="px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 transition-colors text-sm"
-              >
-                Logout
-              </button>
-            </>
+            <Dropdown label={<span className="truncate max-w-[8rem]">{user.username}</span>}>
+              <DropdownItem onClick={handleLogout}>Logout</DropdownItem>
+            </Dropdown>
           ) : logoutFlash ? (
             <span className="text-sm text-green-300">Logged out</span>
           ) : (
@@ -491,7 +496,7 @@ export default function ProjectToolbar({ editUuid, viewUuid, onSave, saving, las
           onClick={() => setShowExitConfirm(false)}
         >
           <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-96"
+            className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-6 w-96"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">Unsaved Changes</h2>

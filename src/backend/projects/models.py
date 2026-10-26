@@ -1,5 +1,5 @@
 import uuid
-from django.db import models
+from django.db import models, transaction
 from django.contrib.auth.models import User
 
 
@@ -13,7 +13,19 @@ class Project(models.Model):
         "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="forks"
     )
     name = models.CharField(max_length=255, default="Untitled Project")
-    data = models.JSONField()
+    # Where the design lived before branches. create_main_branches moves it
+    # into the project's main branch and clears it; to be dropped once every
+    # deployment has run that.
+    data = models.JSONField(null=True, blank=True)
+    # The branch the view link shows; it is never deleted.
+    main_branch = models.ForeignKey(
+        "Branch", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    # The branch last saved or switched to: what the editor opens and the
+    # project list previews.
+    active_branch = models.ForeignKey(
+        "Branch", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -26,6 +38,65 @@ class Project(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.edit_uuid})"
+
+    @classmethod
+    def create_with_main(cls, data, **fields):
+        """A new project whose design is `data`, held by its main branch."""
+        with transaction.atomic():
+            project = cls.objects.create(**fields)
+            main = Branch.objects.create(project=project, name="main", data=data)
+            project.main_branch = project.active_branch = main
+            project.save(update_fields=["main_branch", "active_branch"])
+        return project
+
+
+class Branch(models.Model):
+    """One line of work in a project. Every branch holds its own copy of the
+    design and is edited (and autosaved) on its own. A branch other than main
+    starts from a parent branch and can take in the parent's changes or hand
+    its own back; a fork's main branch has the original project's main as its
+    parent, in the other project, and only takes in changes from it."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="branches")
+    name = models.CharField(max_length=80)
+    data = models.JSONField()
+    parent = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="children"
+    )
+    # The last state this branch and its parent had in common, gzipped JSON:
+    # the base of a three-way merge between the two. Set when the branch
+    # starts and after every merge between them.
+    base_gz = models.BinaryField(null=True, blank=True)
+    # Set when the branch was merged into its parent: it is done, kept only so
+    # the history shows where the parent's changes came from
+    closed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [models.Index(fields=["project", "created_at"])]
+
+    def __str__(self):
+        return f"{self.name} ({self.project_id})"
+
+
+class BranchMerge(models.Model):
+    """One merge between a branch and its parent, kept to draw the history
+    graph. The names are copied so a merge from a since deleted branch still
+    reads right."""
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="merges")
+    source = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    target = models.ForeignKey(Branch, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    source_name = models.CharField(max_length=80)
+    target_name = models.CharField(max_length=80)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.source_name} -> {self.target_name}"
 
 
 class LayoutRating(models.Model):

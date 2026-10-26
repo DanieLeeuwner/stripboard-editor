@@ -13,7 +13,7 @@ class ProjectAdmin(admin.ModelAdmin):
     list_filter = ["owner", "created_at"]
     search_fields = ["name", "edit_uuid", "view_uuid"]
     readonly_fields = ["edit_uuid", "view_uuid", "view_link", "created_at", "updated_at"]
-    raw_id_fields = ["owner", "fork_of"]
+    raw_id_fields = ["owner", "fork_of", "main_branch", "active_branch"]
 
     @admin.display(description="View")
     def view_link(self, obj):

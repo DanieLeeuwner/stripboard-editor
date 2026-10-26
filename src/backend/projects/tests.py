@@ -17,7 +17,12 @@ from projects.migrations_data.ic_unification import (
 from projects.migrations_data.optocoupler_v4 import migrate_optocoupler_v4
 from projects.migrations_data.pipeline import CURRENT_SCHEMA_VERSION, migrate_to_current
 from projects.migrations_data.schematic_v3 import SCHEMA_VERSION as V3, decide_wiring, migrate_schematic_v3
-from projects.models import Project, UserPart
+from projects.models import Branch, Project, UserPart
+
+
+def _main(project):
+    """The design the project's main branch holds now."""
+    return Branch.objects.get(pk=Project.objects.get(pk=project.pk).main_branch_id).data
 
 
 FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "ic-migration-test-project.json")
@@ -363,7 +368,7 @@ class SaveHookRouteTests(TestCase):
     def setUp(self):
         # Seed directly via the ORM so we can put v1-shaped data in the DB
         # without going through any endpoint.
-        self.project = Project.objects.create(name="Test", data=_v1_dip8_payload())
+        self.project = Project.create_with_main(name="Test", data=_v1_dip8_payload())
 
     def test_put_v1_payload_migrates_and_persists(self):
         res = Client().put(
@@ -372,14 +377,15 @@ class SaveHookRouteTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(res.status_code, 200)
-        # Response carries migrated data...
-        body = res.json()
+        self.assertNotIn("data", res.json(), "a save answers with the history, not the design")
+        # The stored design is migrated...
+        body = Client().get(f"/api/projects/{self.project.edit_uuid}/").json()
         self.assertEqual(body["data"]["version"], CURRENT_SCHEMA_VERSION)
         self.assertEqual(body["data"]["schematicWires"][0]["start"], {"x": 140, "y": 180})
         # ...and the DB row matches.
         self.project.refresh_from_db()
-        self.assertEqual(self.project.data["version"], CURRENT_SCHEMA_VERSION)
-        self.assertEqual(self.project.data["schematicWires"][0]["start"], {"x": 140, "y": 180})
+        self.assertEqual(_main(self.project)["version"], CURRENT_SCHEMA_VERSION)
+        self.assertEqual(_main(self.project)["schematicWires"][0]["start"], {"x": 140, "y": 180})
 
     def test_put_current_payload_unchanged(self):
         payload = {"version": CURRENT_SCHEMA_VERSION, "components": [], "schematicWires": [], "netLabels": [], "wiring": "touch"}
@@ -390,7 +396,7 @@ class SaveHookRouteTests(TestCase):
         )
         self.assertEqual(res.status_code, 200)
         self.project.refresh_from_db()
-        self.assertEqual(self.project.data, payload)
+        self.assertEqual(_main(self.project), payload)
 
     def test_put_full_fixture_round_trip(self):
         """End-to-end with the comprehensive fixture: PUT v1 data, get v2 back,
@@ -404,7 +410,7 @@ class SaveHookRouteTests(TestCase):
         )
         self.assertEqual(res.status_code, 200)
         self.project.refresh_from_db()
-        self.assertEqual(self.project.data["version"], CURRENT_SCHEMA_VERSION)
+        self.assertEqual(_main(self.project)["version"], CURRENT_SCHEMA_VERSION)
         # No wire should still sit at one of the OLD IC pin positions.
         # (Reuses the same invariant as IcUnificationRealWorldTests.)
         old_positions = set()
@@ -427,7 +433,7 @@ class SaveHookRouteTests(TestCase):
             a, b = w["start"], w["end"]
             if a["x"] != b["x"] and a["y"] != b["y"]:
                 bends.add((a["x"], b["y"]) if w.get("routeDirection") == "vertical-first" else (b["x"], a["y"]))
-        for w in self.project.data["schematicWires"]:
+        for w in _main(self.project)["schematicWires"]:
             self.assertTrue(w["start"]["x"] == w["end"]["x"] or w["start"]["y"] == w["end"]["y"], "stored wires are straight")
             for endpoint in ("start", "end"):
                 p = (round(w[endpoint]["x"]), round(w[endpoint]["y"]))
@@ -465,8 +471,8 @@ class CreateHookRouteTests(TestCase):
         )
         self.assertEqual(res.status_code, 201)
         project = Project.objects.get(edit_uuid=res.json()["edit_uuid"])
-        self.assertEqual(project.data["version"], CURRENT_SCHEMA_VERSION)
-        self.assertEqual(project.data["schematicWires"][0]["start"], {"x": 140, "y": 180})
+        self.assertEqual(_main(project)["version"], CURRENT_SCHEMA_VERSION)
+        self.assertEqual(_main(project)["schematicWires"][0]["start"], {"x": 140, "y": 180})
 
     def test_post_current_payload_unchanged(self):
         payload = {"version": CURRENT_SCHEMA_VERSION, "components": [], "schematicWires": [], "netLabels": [], "wiring": "touch"}
@@ -477,7 +483,7 @@ class CreateHookRouteTests(TestCase):
         )
         self.assertEqual(res.status_code, 201)
         project = Project.objects.get(edit_uuid=res.json()["edit_uuid"])
-        self.assertEqual(project.data, payload)
+        self.assertEqual(_main(project), payload)
 
 
 class SchematicV3Tests(TestCase):
@@ -700,7 +706,7 @@ class ProjectMigrateEndpointV3Tests(TestCase):
         self.assertEqual(len(body["schematicWires"]), 2)
 
     def test_fork_of_v2_row_is_v3(self):
-        original = Project.objects.create(name="old", data={
+        original = Project.create_with_main(name="old", data={
             "version": 2, "components": [], "nets": [], "netAssignments": [],
             "schematicWires": [{"id": "w1", "start": {"x": 0, "y": 0}, "end": {"x": 100, "y": 60}, "routeDirection": "vertical-first"}],
             "board": {"rows": 10, "cols": 10, "cuts": [], "wires": []},
@@ -708,9 +714,9 @@ class ProjectMigrateEndpointV3Tests(TestCase):
         res = Client().post(f"/api/projects/fork/{original.view_uuid}/")
         self.assertEqual(res.status_code, 201)
         forked = Project.objects.get(edit_uuid=res.json()["edit_uuid"])
-        self.assertEqual(forked.data["version"], CURRENT_SCHEMA_VERSION)
-        self.assertEqual(len(forked.data["schematicWires"]), 2)
-        self.assertEqual(original.data["version"], 2, "the original row is left alone")
+        self.assertEqual(_main(forked)["version"], CURRENT_SCHEMA_VERSION)
+        self.assertEqual(len(_main(forked)["schematicWires"]), 2)
+        self.assertEqual(_main(original)["version"], 2, "the original row is left alone")
 
 
 class ReadHookTests(TestCase):
@@ -719,7 +725,7 @@ class ReadHookTests(TestCase):
     current-schema data."""
 
     def setUp(self):
-        self.project = Project.objects.create(name="old", data={
+        self.project = Project.create_with_main(name="old", data={
             "version": 2, "components": [], "nets": [], "netAssignments": [],
             "schematicWires": [{"id": "w1", "start": {"x": 0, "y": 0}, "end": {"x": 100, "y": 60}, "routeDirection": "horizontal-first"}],
             "board": {"rows": 10, "cols": 10, "cuts": [], "wires": []},
@@ -732,7 +738,7 @@ class ReadHookTests(TestCase):
         self.assertEqual(data["version"], CURRENT_SCHEMA_VERSION)
         self.assertEqual(len(data["schematicWires"]), 2)
         self.project.refresh_from_db()
-        self.assertEqual(self.project.data["version"], 2, "reading never writes")
+        self.assertEqual(_main(self.project)["version"], 2, "reading never writes")
 
     def test_view_get_is_current(self):
         res = Client().get(f"/api/projects/view/{self.project.view_uuid}/")
@@ -829,7 +835,7 @@ class UserPartLibraryTests(TestCase):
         comp = {"id": "k1", "defId": "custom-copy", "boardPos": {"row": 1, "col": 1} if placed else None,
                 "footprintOverride": {"width": 2, "height": 2, "pins": []}, "package": "to220"}
         data = {"version": CURRENT_SCHEMA_VERSION, "componentDefs": [copy], "components": [comp]}
-        return Project.objects.create(owner=self.user, name=name, data=data)
+        return Project.create_with_main(owner=self.user, name=name, data=data)
 
     def test_create_list_delete(self):
         res = self._post(_grid_part())
@@ -889,7 +895,7 @@ class UserPartLibraryTests(TestCase):
         part = UserPart.objects.create(owner=self.user, part=_grid_part())
         linked = self._project_with_copy(str(part.id))
         skipped = self._project_with_copy(str(part.id), name="Open in the editor")
-        unlinked = Project.objects.create(owner=self.user, data={"componentDefs": [{**_grid_part(), "id": "custom-copy"}], "components": []})
+        unlinked = Project.create_with_main(owner=self.user, data={"componentDefs": [{**_grid_part(), "id": "custom-copy"}], "components": []})
         usage = self.client.get(f"/api/users/me/parts/{part.id}/usage/").json()
         self.assertEqual(sorted(u["name"] for u in usage), ["Open in the editor", "P"])
         self.assertEqual(usage[0]["placed"], 1)
@@ -902,36 +908,37 @@ class UserPartLibraryTests(TestCase):
         self.assertEqual(res.json()["updated_projects"], 1)
 
         linked.refresh_from_db()
-        copy = linked.data["componentDefs"][0]
+        copy = _main(linked)["componentDefs"][0]
         self.assertEqual((copy["id"], copy["name"], copy["width"]), ("custom-copy", "Relay 2", 3))
         self.assertEqual(copy["symbol"], "custom-footprint-custom-copy", "the symbol follows the project's own id")
         self.assertEqual(copy["library"], {"id": str(part.id), "rev": 2})
-        comp = linked.data["components"][0]
+        comp = _main(linked)["components"][0]
         self.assertIsNone(comp["boardPos"], "a changed footprint sends the placed part back to unplaced")
         self.assertNotIn("footprintOverride", comp)
         self.assertNotIn("package", comp, "the package was chosen for the old footprint")
 
         skipped.refresh_from_db()
-        self.assertEqual(skipped.data["componentDefs"][0]["name"], "Relay")
+        self.assertEqual(_main(skipped)["componentDefs"][0]["name"], "Relay")
         unlinked.refresh_from_db()
-        self.assertEqual(unlinked.data["componentDefs"][0]["name"], "Relay")
+        self.assertEqual(_main(unlinked)["componentDefs"][0]["name"], "Relay")
 
     def test_update_drops_net_assignments_of_removed_pins(self):
         part = UserPart.objects.create(owner=self.user, part=_grid_part())
         linked = self._project_with_copy(str(part.id))
-        linked.data["components"].append({"id": "r1", "defId": "def-resistor", "boardPos": None})
-        linked.data["netAssignments"] = [
+        main = linked.main_branch
+        main.data["components"].append({"id": "r1", "defId": "def-resistor", "boardPos": None})
+        main.data["netAssignments"] = [
             {"netId": "n1", "componentId": "k1", "pinId": "1"},
             {"netId": "n2", "componentId": "k1", "pinId": "2"},
             {"netId": "n2", "componentId": "r1", "pinId": "2"},
         ]
-        linked.save()
+        main.save()
         pin_two = _grid_part(pins=[{"id": "2", "name": "2", "offsetRow": 0, "offsetCol": 0}])
         self.client.put(f"/api/users/me/parts/{part.id}/", content_type="application/json",
                         data=json.dumps({"part": pin_two, "update_projects": True}))
         linked.refresh_from_db()
         self.assertEqual(
-            [(a["componentId"], a["pinId"]) for a in linked.data["netAssignments"]],
+            [(a["componentId"], a["pinId"]) for a in _main(linked)["netAssignments"]],
             [("k1", "2"), ("r1", "2")],
             "pin 1 is gone from the part; other parts' pins are left alone",
         )
@@ -943,7 +950,7 @@ class UserPartLibraryTests(TestCase):
         self.client.put(f"/api/users/me/parts/{part.id}/", content_type="application/json",
                         data=json.dumps({"part": renamed, "update_projects": True}))
         linked.refresh_from_db()
-        self.assertEqual(linked.data["components"][0]["boardPos"], {"row": 1, "col": 1})
+        self.assertEqual(_main(linked)["components"][0]["boardPos"], {"row": 1, "col": 1})
 
     def test_update_without_projects_touches_none(self):
         part = UserPart.objects.create(owner=self.user, part=_grid_part())
@@ -951,7 +958,7 @@ class UserPartLibraryTests(TestCase):
         self.client.put(f"/api/users/me/parts/{part.id}/", content_type="application/json",
                         data=json.dumps({"part": _grid_part(name="Changed")}))
         linked.refresh_from_db()
-        self.assertEqual(linked.data["componentDefs"][0]["name"], "Relay")
+        self.assertEqual(_main(linked)["componentDefs"][0]["name"], "Relay")
 
 
 class UserPartFoundAndImportTests(TestCase):
@@ -964,7 +971,7 @@ class UserPartFoundAndImportTests(TestCase):
         self.client.force_login(self.user)
 
     def _project(self, name, defs):
-        return Project.objects.create(owner=self.user, name=name, data={"componentDefs": defs, "components": []})
+        return Project.create_with_main(owner=self.user, name=name, data={"componentDefs": defs, "components": []})
 
     def test_identical_parts_are_found_once_and_adopted_together(self):
         a = self._project("A", [{**_grid_part(), "id": "custom-a", "symbol": "custom-footprint-custom-a"}])
@@ -980,9 +987,9 @@ class UserPartFoundAndImportTests(TestCase):
         part_id = res.json()["id"]
         for project in (a, b):
             project.refresh_from_db()
-            self.assertEqual(project.data["componentDefs"][0]["library"], {"id": part_id, "rev": 1})
+            self.assertEqual(_main(project)["componentDefs"][0]["library"], {"id": part_id, "rev": 1})
         other.refresh_from_db()
-        self.assertNotIn("library", other.data["componentDefs"][0])
+        self.assertNotIn("library", _main(other)["componentDefs"][0])
 
         remaining = self.client.get("/api/users/me/parts/found/").json()
         self.assertEqual([g["part"]["name"] for g in remaining], ["Buzzer"], "adopted parts are no longer listed")
@@ -995,7 +1002,7 @@ class UserPartFoundAndImportTests(TestCase):
 
     def test_other_users_projects_are_not_searched(self):
         other = User.objects.create_user("other", password="x" * 64)
-        Project.objects.create(owner=other, data={"componentDefs": [_grid_part()]})
+        Project.create_with_main(owner=other, data={"componentDefs": [_grid_part()]})
         self.assertEqual(self.client.get("/api/users/me/parts/found/").json(), [])
 
     def test_import_adds_every_part_or_none(self):
@@ -1021,20 +1028,19 @@ class ProjectLimitTests(TestCase):
         payload = json.dumps({"name": "One more", "data": {"version": CURRENT_SCHEMA_VERSION}})
         res = client.post("/api/projects/", data=payload, content_type="application/json")
         self.assertEqual(res.status_code, 403)
-        anon = Project.objects.create(data={})
+        anon = Project.create_with_main(data={})
         self.assertEqual(client.post(f"/api/projects/{anon.edit_uuid}/claim/").status_code, 403)
         self.assertEqual(client.post(f"/api/projects/fork/{anon.view_uuid}/").status_code, 403)
 
 
 class ProjectDuplicateRenameTests(TestCase):
-    """Duplicate and rename from the project list: owner only, and the name is
-    kept in step between the row and the project JSON."""
+    """Duplicate and rename from the project list: owner only."""
 
     def setUp(self):
         self.user = User.objects.create_user("owner", password="x" * 64)
         self.client = Client()
         self.client.force_login(self.user)
-        self.project = Project.objects.create(
+        self.project = Project.create_with_main(
             owner=self.user, name="Fuzz", data={"version": CURRENT_SCHEMA_VERSION, "name": "Fuzz", "components": []},
         )
 
@@ -1045,8 +1051,8 @@ class ProjectDuplicateRenameTests(TestCase):
         self.assertNotEqual(copy.pk, self.project.pk)
         self.assertEqual(copy.owner, self.user)
         self.assertEqual(copy.name, "Fuzz (copy)")
-        self.assertEqual(copy.data["name"], "Fuzz (copy)")
-        self.assertEqual(copy.data["components"], [])
+        self.assertEqual(self.client.get(f"/api/projects/{copy.edit_uuid}/").json()["data"]["name"], "Fuzz (copy)")
+        self.assertEqual(_main(copy)["components"], [])
         self.assertIsNone(copy.fork_of)
 
     def test_rename_updates_row_and_json(self):
@@ -1057,7 +1063,8 @@ class ProjectDuplicateRenameTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.project.refresh_from_db()
         self.assertEqual(self.project.name, "Big Muff")
-        self.assertEqual(self.project.data["name"], "Big Muff")
+        detail = self.client.get(f"/api/projects/{self.project.edit_uuid}/").json()
+        self.assertEqual(detail["data"]["name"], "Big Muff", "every branch is served with the project's name")
 
     def test_only_the_owner(self):
         other = Client()
@@ -1081,7 +1088,7 @@ class ProjectDuplicateRenameTests(TestCase):
         )
         self.assertEqual(res.status_code, 201)
         self.assertEqual(res.json()["name"], "Fuzz 9V")
-        self.assertEqual(Project.objects.get(edit_uuid=res.json()["edit_uuid"]).data["name"], "Fuzz 9V")
+        self.assertEqual(Project.objects.get(edit_uuid=res.json()["edit_uuid"]).name, "Fuzz 9V")
 
 
 class UserProjectsPaginationTests(TestCase):
@@ -1116,10 +1123,410 @@ class UserProjectsPaginationTests(TestCase):
 
     def test_new_project_does_not_shift_later_pages(self):
         first = self._page()
-        Project.objects.create(owner=self.user, name="New", data={})
+        Project.create_with_main(owner=self.user, name="New", data={})
         second = self._page(first["next"])
         self.assertTrue({p["edit_uuid"] for p in first["results"]}.isdisjoint(p["edit_uuid"] for p in second["results"]))
         self.assertNotIn("New", [p["name"] for p in second["results"]])
 
     def test_bad_cursor(self):
         self.assertEqual(self.client.get("/api/users/me/projects/?before=nonsense").status_code, 400)
+
+
+class CreateMainBranchesCommandTests(TestCase):
+    def test_moves_data_into_main_and_keeps_list_order(self):
+        from django.core.management import call_command
+        legacy = Project.objects.create(name="Old", data={"version": CURRENT_SCHEMA_VERSION, "components": [1]})
+        Project.objects.filter(pk=legacy.pk).update(updated_at=timezone.now() - timezone.timedelta(days=30))
+        before = Project.objects.get(pk=legacy.pk).updated_at
+        call_command("create_main_branches", stdout=open(os.devnull, "w"))
+        legacy.refresh_from_db()
+        self.assertIsNotNone(legacy.main_branch)
+        self.assertEqual(legacy.active_branch_id, legacy.main_branch_id)
+        self.assertEqual(legacy.main_branch.name, "main")
+        self.assertEqual(legacy.main_branch.data["components"], [1])
+        self.assertIsNone(legacy.data, "the project's own copy is cleared")
+        self.assertEqual(legacy.updated_at, before, "the project keeps its place in the list")
+        call_command("create_main_branches", stdout=open(os.devnull, "w"))
+        self.assertEqual(legacy.branches.count(), 1, "running again changes nothing")
+
+
+def _design(**extra):
+    return {"version": CURRENT_SCHEMA_VERSION, "components": [], "nets": [], "netAssignments": [],
+            "schematicWires": [], "board": {"rows": 10, "cols": 10, "cuts": [], "wires": []}, **extra}
+
+
+class BranchTests(TestCase):
+    """Branches of one project: what is saved where, and who can reach what."""
+
+    def setUp(self):
+        self.client = Client()
+        self.project = Project.create_with_main(_design(notes="main"), name="Amp")
+        self.url = f"/api/projects/{self.project.edit_uuid}"
+
+    def _post(self, path, body):
+        return self.client.post(f"{self.url}{path}", data=json.dumps(body), content_type="application/json")
+
+    def _branch(self, name="rev B", source=None):
+        res = self._post("/branches/", {"name": name, "from": str(source or self.project.main_branch_id)})
+        self.assertEqual(res.status_code, 201, res.content)
+        return res.json()
+
+    def _save(self, branch, **data):
+        body = {"data": _design(**data)}
+        if branch:
+            body["branch"] = branch
+        res = self.client.put(f"{self.url}/", data=json.dumps(body), content_type="application/json")
+        self.assertEqual(res.status_code, 200, res.content)
+        return res.json()
+
+    def test_new_branch_copies_its_parent_and_becomes_active(self):
+        created = self._branch()
+        self.assertEqual(created["data"]["notes"], "main")
+        self.assertEqual(created["active_branch"], created["branch"])
+        branch = Branch.objects.get(id=created["branch"])
+        self.assertEqual(branch.parent_id, self.project.main_branch_id)
+        self.assertEqual(ungz_json(branch.base_gz)["notes"], "main")
+        listed = {b["name"]: b for b in created["branches"]}
+        self.assertEqual(listed["rev B"]["parent"], str(self.project.main_branch_id))
+        self.assertTrue(listed["main"]["is_main"])
+
+    def test_saves_go_to_their_branch_and_the_default_is_main(self):
+        b = self._branch()["branch"]
+        self._save(b, notes="on B")
+        self.assertEqual(_main(self.project)["notes"], "main", "main is untouched")
+        self.assertEqual(self.client.get(f"{self.url}/?branch={b}").json()["data"]["notes"], "on B")
+        self.assertEqual(self.client.get(f"{self.url}/?branch=active").json()["branch"], b)
+        # An editor from before branches names none: it reads and saves main
+        self.assertEqual(self.client.get(f"{self.url}/").json()["data"]["notes"], "main")
+        self._save(None, notes="old editor")
+        self.assertEqual(_main(self.project)["notes"], "old editor")
+        self.assertEqual(Branch.objects.get(id=b).data["notes"], "on B")
+
+    def test_names_must_be_unique_and_main_is_fixed(self):
+        b = self._branch()["branch"]
+        self.assertEqual(self._post("/branches/", {"name": "REV b", "from": b}).status_code, 400)
+        main = self.project.main_branch_id
+        res = self.client.patch(f"{self.url}/branches/{main}/", data=json.dumps({"name": "x"}), content_type="application/json")
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(self.client.delete(f"{self.url}/branches/{main}/").status_code, 400)
+        res = self.client.patch(f"{self.url}/branches/{b}/", data=json.dumps({"name": "rev C"}), content_type="application/json")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("rev C", [x["name"] for x in res.json()["branches"]])
+
+    def test_delete_refuses_a_branch_others_start_from(self):
+        b = self._branch()["branch"]
+        c = self._branch("rev C", source=b)["branch"]
+        self.assertEqual(self.client.delete(f"{self.url}/branches/{b}/").status_code, 400)
+        self.assertEqual(self.client.delete(f"{self.url}/branches/{c}/").status_code, 204)
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.active_branch_id, self.project.main_branch_id, "deleting the active branch falls back to main")
+        self.assertEqual(self.client.delete(f"{self.url}/branches/{b}/").status_code, 204)
+
+    def test_branches_of_other_projects_are_out_of_reach(self):
+        other = Project.create_with_main(_design(), name="Other")
+        theirs = str(other.main_branch_id)
+        self.assertEqual(self.client.get(f"{self.url}/?branch={theirs}").status_code, 404)
+        res = self.client.put(f"{self.url}/", data=json.dumps({"branch": theirs, "data": _design()}), content_type="application/json")
+        self.assertEqual(res.status_code, 404)
+        self.assertEqual(self._post("/branches/", {"name": "x", "from": theirs}).status_code, 404)
+        self.assertEqual(self.client.get(f"/api/projects/view/{self.project.view_uuid}/?branch={theirs}").status_code, 404)
+
+    def test_view_link_shows_main_and_can_look_at_branches_without_edit_uuid(self):
+        b = self._branch()["branch"]
+        self._save(b, notes="on B")
+        view = f"/api/projects/view/{self.project.view_uuid}/"
+        res = self.client.get(view)
+        self.assertEqual(res.json()["data"]["notes"], "main")
+        self.assertEqual(len(res.json()["branches"]), 2)
+        other = self.client.get(f"{view}?branch={b}")
+        self.assertEqual(other.json()["data"]["notes"], "on B")
+        self.assertEqual(self.client.get(f"{view}?branch=active").status_code, 404)
+        for r in (res, other):
+            self.assertNotIn(str(self.project.edit_uuid), r.content.decode())
+            self.assertNotIn(self.project.edit_uuid.hex, r.content.decode())
+
+    def test_merge_into_parent(self):
+        b = self._branch()["branch"]
+        self._save(b, notes="on B")
+        main = str(self.project.main_branch_id)
+        prep = self.client.get(f"{self.url}/branches/{main}/merge/?source={b}").json()
+        self.assertEqual(prep["kind"], "into-parent")
+        self.assertEqual(prep["base"]["notes"], "main")
+        self.assertEqual(prep["source"]["data"]["notes"], "on B")
+        b_version = prep["source"]["version"]
+        body = {"source": b, "data": _design(notes="merged"),
+                "source_version": prep["source"]["version"], "target_version": prep["target"]["version"]}
+        res = self._post(f"/branches/{main}/merge/", body)
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(_main(self.project)["notes"], "merged")
+        self.assertEqual(res.json()["merges"][0]["source_name"], "rev B")
+        branch = Branch.objects.get(id=b)
+        self.assertEqual(ungz_json(branch.base_gz)["notes"], "on B", "the merged state is the next common state")
+        self.assertEqual(branch.updated_at.isoformat(), b_version, "the source's version is unchanged")
+        self.assertIsNotNone(branch.closed_at, "merging into the parent closes the branch")
+        listed = next(x for x in res.json()["branches"] if x["id"] == b)
+        self.assertIsNotNone(listed["closed_at"])
+        self.assertEqual(res.json()["active_branch"], main, "the editor lands on main")
+        # A closed branch takes no saves, branches, switches or merges
+        self.assertEqual(self._post(f"/branches/{main}/merge/", body).status_code, 400)
+        put = self.client.put(f"{self.url}/", data=json.dumps({"branch": b, "data": _design()}), content_type="application/json")
+        self.assertEqual(put.status_code, 400)
+        self.assertEqual(self._post("/branches/", {"name": "again", "from": b}).status_code, 400)
+        self.assertEqual(self._post(f"/branches/{b}/activate/", {}).status_code, 400)
+        self.assertEqual(self.client.get(f"{self.url}/?branch={b}").status_code, 200, "it can still be looked at")
+
+    def test_merge_into_parent_waits_for_open_branches_started_from_it(self):
+        b = self._branch()["branch"]
+        c = self._branch("rev C", source=b)["branch"]
+        main = str(self.project.main_branch_id)
+        self.assertEqual(self.client.get(f"{self.url}/branches/{main}/merge/?source={b}").status_code, 400)
+        prep = self.client.get(f"{self.url}/branches/{b}/merge/?source={c}").json()
+        res = self._post(f"/branches/{b}/merge/", {"source": c, "data": _design(notes="from C"),
+                                                    "source_version": prep["source"]["version"],
+                                                    "target_version": prep["target"]["version"]})
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(self.client.get(f"{self.url}/branches/{main}/merge/?source={b}").status_code, 200,
+                         "once rev C is merged, rev B can be")
+
+    def test_merge_from_parent(self):
+        b = self._branch()["branch"]
+        main = str(self.project.main_branch_id)
+        self._save(None, notes="main moved on")
+        prep = self.client.get(f"{self.url}/branches/{b}/merge/?source={main}").json()
+        self.assertEqual(prep["kind"], "from-parent")
+        self.assertEqual(prep["base"]["notes"], "main")
+        res = self._post(f"/branches/{b}/merge/", {"source": main, "data": _design(notes="taken in"),
+                                                    "source_version": prep["source"]["version"],
+                                                    "target_version": prep["target"]["version"]})
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(ungz_json(Branch.objects.get(id=b).base_gz)["notes"], "main moved on")
+        self.assertIsNone(Branch.objects.get(id=b).closed_at, "taking in the parent's changes keeps the branch open")
+
+    def test_parent_changed_until_the_two_meet_again(self):
+        b = self._branch()["branch"]
+        flag = lambda: next(x for x in self.client.get(f"{self.url}/").json()["branches"] if x["id"] == b)["parent_changed"]
+        self.assertFalse(flag())
+        self._save(b, notes="on B")
+        self.assertFalse(flag(), "the branch's own edits are not the parent's")
+        self._save(None, notes="main moved on")
+        self.assertTrue(flag())
+        main = str(self.project.main_branch_id)
+        prep = self.client.get(f"{self.url}/branches/{b}/merge/?source={main}").json()
+        self._post(f"/branches/{b}/merge/", {"source": main, "data": _design(notes="taken in"),
+                                              "source_version": prep["source"]["version"],
+                                              "target_version": prep["target"]["version"]})
+        self.assertFalse(flag())
+
+    def test_only_a_branch_and_its_parent_merge(self):
+        b = self._branch()["branch"]
+        c = self._branch("rev C")["branch"]
+        self.assertEqual(self.client.get(f"{self.url}/branches/{b}/merge/?source={c}").status_code, 400)
+        self.assertEqual(self.client.get(f"{self.url}/branches/{b}/merge/?source=nonsense").status_code, 400)
+
+
+class MergedBranchTests(TestCase):
+    """Merged branches are history: they do not count toward the limit, block
+    nothing, take no library updates, and go only with the branch they were
+    merged into."""
+
+    def setUp(self):
+        self.user = User.objects.create_user("hist", password="x" * 64)
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.project = Project.create_with_main(_design(), name="P", owner=self.user)
+        self.url = f"/api/projects/{self.project.edit_uuid}"
+        self.main = str(self.project.main_branch_id)
+
+    def _post(self, path, body):
+        return self.client.post(f"{self.url}{path}", data=json.dumps(body), content_type="application/json")
+
+    def _branch(self, name, source=None):
+        res = self._post("/branches/", {"name": name, "from": source or self.main})
+        self.assertEqual(res.status_code, 201, res.content)
+        return res.json()["branch"]
+
+    def _merge(self, target, source):
+        prep = self.client.get(f"{self.url}/branches/{target}/merge/?source={source}").json()
+        res = self._post(f"/branches/{target}/merge/", {"source": source, "data": prep["target"]["data"],
+                                                         "source_version": prep["source"]["version"],
+                                                         "target_version": prep["target"]["version"]})
+        self.assertEqual(res.status_code, 200, res.content)
+
+    def test_merged_branches_do_not_count_toward_the_limit(self):
+        from projects.branches import MAX_BRANCHES_PER_PROJECT
+        for i in range(MAX_BRANCHES_PER_PROJECT - 1):
+            self._merge(self.main, self._branch(f"b{i}"))
+        self.assertEqual(self.project.branches.count(), MAX_BRANCHES_PER_PROJECT)
+        self._branch("one more")
+        # Only open branches fill the project up
+        Branch.objects.bulk_create([
+            Branch(project=self.project, name=f"open {i}", data={}) for i in range(MAX_BRANCHES_PER_PROJECT - 2)
+        ])
+        self.assertEqual(self._post("/branches/", {"name": "too many", "from": self.main}).status_code, 403)
+
+    def test_merged_branches_go_with_their_parent(self):
+        b = self._branch("b")
+        c = self._branch("c", source=b)
+        self._merge(b, c)
+        self.assertEqual(self.client.delete(f"{self.url}/branches/{c}/").status_code, 400, "not on its own")
+        self.assertEqual(self.client.delete(f"{self.url}/branches/{b}/").status_code, 204, "a merged child does not block")
+        self.assertFalse(Branch.objects.filter(id__in=[b, c]).exists(), "the merged child went with it")
+        self.assertEqual(self.project.merges.count(), 1, "the merge row stays, pointing nowhere")
+
+    def test_open_children_still_block(self):
+        b = self._branch("b")
+        self._branch("c", source=b)
+        self.assertEqual(self.client.delete(f"{self.url}/branches/{b}/").status_code, 400)
+
+    def test_library_updates_leave_merged_branches_alone(self):
+        part = UserPart.objects.create(owner=self.user, part=_grid_part())
+        copy_def = {**_grid_part(), "id": "custom-copy", "symbol": "custom-footprint-custom-copy",
+                    "library": {"id": str(part.id), "rev": 1}}
+        main = self.project.main_branch
+        main.data = _design(componentDefs=[copy_def])
+        main.save()
+        b = self._branch("b")
+        self._merge(self.main, b)
+        before = Branch.objects.get(id=b).updated_at
+        self.client.put(f"/api/users/me/parts/{part.id}/", content_type="application/json",
+                        data=json.dumps({"part": _grid_part(name="Relay 2"), "update_projects": True}))
+        closed = Branch.objects.get(id=b)
+        self.assertEqual(closed.data["componentDefs"][0]["name"], "Relay")
+        self.assertEqual(closed.updated_at, before)
+        self.assertEqual(_main(self.project)["componentDefs"][0]["name"], "Relay 2")
+
+    def test_saving_to_a_gone_branch_says_why(self):
+        b = self._branch("b")
+        c = self._branch("c")
+        self._merge(self.main, b)
+        res = self.client.put(f"{self.url}/", data=json.dumps({"branch": b, "data": _design()}), content_type="application/json")
+        self.assertEqual((res.status_code, res.json()["code"]), (400, "branch_closed"))
+        self.assertEqual(self.client.delete(f"{self.url}/branches/{c}/").status_code, 204)
+        res = self.client.put(f"{self.url}/", data=json.dumps({"branch": c, "data": _design()}), content_type="application/json")
+        self.assertEqual((res.status_code, res.json()["code"]), (404, "branch_missing"))
+
+    def test_a_branch_deleted_mid_merge_is_a_conflict_not_a_crash(self):
+        b = self._branch("b")
+        prep = self.client.get(f"{self.url}/branches/{self.main}/merge/?source={b}").json()
+        Branch.objects.filter(id=b).delete()
+        res = self._post(f"/branches/{self.main}/merge/", {"source": b, "data": prep["target"]["data"],
+                                                            "source_version": prep["source"]["version"],
+                                                            "target_version": prep["target"]["version"]})
+        self.assertIn(res.status_code, (400, 409))
+
+
+def ungz_json(blob):
+    import gzip
+    return json.loads(gzip.decompress(bytes(blob)))
+
+
+class ForkTests(TestCase):
+    """A fork's main follows the original's main: it can take in the
+    original's changes, never hand its own back."""
+
+    def setUp(self):
+        self.original = Project.create_with_main(_design(notes="v1"), name="Fuzz")
+        self.client = Client()
+        res = self.client.post(f"/api/projects/fork/{self.original.view_uuid}/")
+        self.assertEqual(res.status_code, 201)
+        self.fork_json = res.json()
+        self.fork = Project.objects.get(edit_uuid=res.json()["edit_uuid"])
+
+    def test_fork_main_has_the_original_main_as_parent(self):
+        self.assertEqual(self.fork.main_branch.parent_id, self.original.main_branch_id)
+        self.assertEqual(self.fork.fork_of_id, self.original.id)
+        up = self.fork_json["upstream"]
+        self.assertEqual(up["view_uuid"], str(self.original.view_uuid))
+        self.assertEqual(up["branch"], str(self.original.main_branch_id))
+        main = next(b for b in self.fork_json["branches"] if b["is_main"])
+        self.assertTrue(main["upstream"])
+        self.assertIsNone(main["parent"], "the original's branch id is only given as upstream")
+
+    def test_fork_never_reveals_the_original_edit_uuid(self):
+        edit = str(self.original.edit_uuid)
+        for res in (
+            self.client.get(f"/api/projects/{self.fork.edit_uuid}/"),
+            self.client.get(f"/api/projects/view/{self.fork.view_uuid}/"),
+            self.client.get(f"/api/projects/{self.fork.edit_uuid}/branches/{self.fork.main_branch_id}/merge/"
+                            f"?source={self.original.main_branch_id}"),
+        ):
+            self.assertNotIn(edit, res.content.decode())
+            self.assertNotIn(self.original.edit_uuid.hex, res.content.decode())
+        view = self.client.get(f"/api/projects/view/{self.fork.view_uuid}/").json()
+        self.assertNotIn("upstream", view)
+        self.assertNotIn(str(self.original.view_uuid), json.dumps(view), "a fork's view link does not lead to the original")
+
+    def test_take_in_the_originals_changes(self):
+        orig_main = self.original.main_branch
+        orig_main.data = _design(notes="v2")
+        orig_main.save()
+        fork_main = str(self.fork.main_branch_id)
+        url = f"/api/projects/{self.fork.edit_uuid}/branches/{fork_main}/merge/"
+        prep = self.client.get(f"{url}?source={orig_main.id}").json()
+        self.assertEqual(prep["kind"], "from-parent")
+        self.assertEqual((prep["base"]["notes"], prep["source"]["data"]["notes"]), ("v1", "v2"))
+        res = self.client.post(url, content_type="application/json", data=json.dumps({
+            "source": str(orig_main.id), "data": _design(notes="v2"),
+            "source_version": prep["source"]["version"], "target_version": prep["target"]["version"],
+        }))
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(_main(self.fork)["notes"], "v2")
+        self.assertEqual(_main(self.original)["notes"], "v2")
+
+    def test_the_fork_cannot_merge_into_the_original(self):
+        url = f"/api/projects/{self.original.edit_uuid}/branches/{self.original.main_branch_id}/merge/"
+        self.assertEqual(self.client.get(f"{url}?source={self.fork.main_branch_id}").status_code, 400)
+
+
+class DuplicateHistoryTests(TestCase):
+    def test_duplicate_copies_branches_and_merges(self):
+        user = User.objects.create_user("dup", password="x" * 64)
+        client = Client()
+        client.force_login(user)
+        upstream = Project.create_with_main(_design(), name="Up")
+        fork = Project.objects.get(edit_uuid=client.post(f"/api/projects/fork/{upstream.view_uuid}/").json()["edit_uuid"])
+        url = f"/api/projects/{fork.edit_uuid}"
+        b = client.post(f"{url}/branches/", content_type="application/json",
+                        data=json.dumps({"name": "rev B", "from": str(fork.main_branch_id)})).json()["branch"]
+        main = str(fork.main_branch_id)
+        prep = client.get(f"{url}/branches/{main}/merge/?source={b}").json()
+        client.post(f"{url}/branches/{main}/merge/", content_type="application/json", data=json.dumps({
+            "source": b, "data": _design(notes="m"),
+            "source_version": prep["source"]["version"], "target_version": prep["target"]["version"]}))
+
+        res = client.post(f"{url}/duplicate/")
+        self.assertEqual(res.status_code, 201)
+        copy = Project.objects.get(edit_uuid=res.json()["edit_uuid"])
+        branches = {x.name: x for x in copy.branches.all()}
+        self.assertEqual(set(branches), {"main", "rev B"})
+        self.assertEqual(copy.main_branch_id, branches["main"].id)
+        self.assertEqual(branches["rev B"].parent_id, branches["main"].id, "parents point into the copy")
+        self.assertEqual(branches["main"].parent_id, upstream.main_branch_id, "a copy of a fork still follows the original")
+        self.assertEqual(branches["main"].data["notes"], "m")
+        self.assertIsNotNone(branches["rev B"].closed_at, "a merged branch stays closed in the copy")
+        merge = copy.merges.get()
+        self.assertEqual((merge.source_id, merge.target_id), (branches["rev B"].id, branches["main"].id))
+        self.assertEqual(fork.branches.count(), 2, "the original keeps its own")
+
+
+class PartLibraryBranchTests(TestCase):
+    def test_update_reaches_every_branch_but_the_open_one(self):
+        user = User.objects.create_user("lib", password="x" * 64)
+        client = Client()
+        client.force_login(user)
+        part = UserPart.objects.create(owner=user, part=_grid_part())
+        copy_def = {**_grid_part(), "id": "custom-copy", "symbol": "custom-footprint-custom-copy",
+                    "library": {"id": str(part.id), "rev": 1}}
+        project = Project.create_with_main(_design(componentDefs=[copy_def]), name="P", owner=user)
+        url = f"/api/projects/{project.edit_uuid}"
+        b = client.post(f"{url}/branches/", content_type="application/json",
+                        data=json.dumps({"name": "b", "from": str(project.main_branch_id)})).json()["branch"]
+        c = client.post(f"{url}/branches/", content_type="application/json",
+                        data=json.dumps({"name": "c", "from": str(project.main_branch_id)})).json()["branch"]
+        res = client.put(f"/api/users/me/parts/{part.id}/", content_type="application/json", data=json.dumps({
+            "part": _grid_part(name="Relay 2"), "update_projects": True, "skip_branch": b}))
+        self.assertEqual(res.json()["updated_projects"], 1)
+        names = {x.name: x.data["componentDefs"][0]["name"] for x in project.branches.all()}
+        self.assertEqual(names, {"main": "Relay 2", "b": "Relay", "c": "Relay 2"})
+        usage = client.get(f"/api/users/me/parts/{part.id}/usage/").json()
+        self.assertEqual([u["name"] for u in usage], ["P"], "one entry per project")

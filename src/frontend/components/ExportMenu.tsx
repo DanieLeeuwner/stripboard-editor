@@ -65,11 +65,11 @@ export default function ExportMenu({ source }: { source: "edit" | "view" }) {
       {/* Netlist export shipped a generated footprint library */}
       {footprintNotice !== null && (
         <div
-          className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 font-sans"
+          className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 font-sans whitespace-normal"
           onClick={() => setFootprintNotice(null)}
         >
           <div
-            className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-[30rem] max-w-[90vw]"
+            className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-6 w-[30rem] max-w-[90vw]"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 mb-2">

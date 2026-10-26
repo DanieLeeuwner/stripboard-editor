@@ -306,6 +306,9 @@ interface HistoryState {
   /** Saves the open project to the server, when the page can (a project already stored there). */
   saveNow: (() => Promise<boolean>) | null;
   setSaveNow: (save: (() => Promise<boolean>) | null) => void;
+  /** The branch of the stored project that is open, when there is one. Not saved with the project. */
+  branchId: string | null;
+  setBranchId: (id: string | null) => void;
   /** Run fn as one undoable step: one snapshot up front, none in between. */
   transact: (fn: () => void) => void;
 }
@@ -456,6 +459,21 @@ function bumpBoardEdits(s: Pick<ProjectStore, "boardEditsSinceAutoLayout" | "_ed
   return { boardEditsSinceAutoLayout: (s.boardEditsSinceAutoLayout ?? 0) + 1, _lastBoardEditSeq: s._editSeq };
 }
 
+/**
+ * A design made outside the editor (a merge of two branches) as an edit
+ * would leave it: wires split and joined at contacts by its wiring rules,
+ * nets inferred from the wiring.
+ */
+export function settleProject(data: Project): Project {
+  const settled = settleSchematic(prepareProjectState(data));
+  return {
+    ...data,
+    schematicWires: settled.schematicWires,
+    nets: settled.nets,
+    netAssignments: settled.netAssignments,
+  };
+}
+
 function prepareProjectState(data: Project) {
   const savedDefs = data.componentDefs ?? [];
   const defaultIds = new Set(DEFAULT_COMPONENTS.map((d) => d.id));
@@ -557,6 +575,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   markClean: () => set({ isDirty: false }),
   saveNow: null,
   setSaveNow: (saveNow) => set({ saveNow }),
+  branchId: null,
+  setBranchId: (branchId) => set({ branchId }),
 
   addComponentDef: (def) => {
     get().pushSnapshot();

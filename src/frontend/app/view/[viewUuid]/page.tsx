@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useProjectStore } from "@/store/useProjectStore";
-import { getProjectView, forkProject } from "@/lib/api";
+import { getProjectView, forkProject, type ProjectHistory, type ProjectView } from "@/lib/api";
 import { track } from "@/lib/track";
 import { Project } from "@/types";
 import SchematicEditor from "@/components/SchematicEditor";
@@ -14,6 +14,8 @@ import ThemeToggle from "@/components/ThemeToggle";
 import PrintPreview from "@/components/print/PrintPreview";
 import ProjectNotesPanel from "@/components/ProjectNotesPanel";
 import ExportMenu from "@/components/ExportMenu";
+import BranchChip from "@/components/branches/BranchChip";
+import { tell } from "@/lib/dialog";
 
 export default function ProjectViewPage() {
   const params = useParams();
@@ -34,20 +36,28 @@ export default function ProjectViewPage() {
   const [mobileTab, setMobileTab] = useState<"schematic" | "stripboard">("stripboard");
   const [showPrint, setShowPrint] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  const [history, setHistory] = useState<ProjectHistory | null>(null);
+  const [branchId, setBranchId] = useState<string | null>(null);
+
+  const applyView = useCallback((project: ProjectView) => {
+    loadProject(project.data as unknown as Project);
+    setProjectName(project.name);
+    setOwnerName(project.owner_name);
+    setHistory({ branches: project.branches, merges: project.merges });
+    setBranchId(project.branch);
+  }, [loadProject]);
 
   useEffect(() => {
     getProjectView(viewUuid)
       .then((project) => {
-        loadProject(project.data as unknown as Project);
-        setProjectName(project.name);
-        setOwnerName(project.owner_name);
+        applyView(project);
         setLoading(false);
       })
       .catch((err) => {
         setError(err.message);
         setLoading(false);
       });
-  }, [viewUuid, loadProject]);
+  }, [viewUuid, applyView]);
 
   useEffect(() => {
     if (projectName) document.title = `${projectName} - Stripboard Editor`;
@@ -59,7 +69,7 @@ export default function ProjectViewPage() {
       track("project-fork");
       router.push(`/project/${forked.edit_uuid}`);
     } catch {
-      alert("Failed to fork project.");
+      void tell("Fork failed", "The project could not be forked. Please try again.");
     }
   };
 
@@ -190,6 +200,19 @@ export default function ProjectViewPage() {
           <span className="font-semibold">{projectName}</span>
           {ownerName && <span className="opacity-70">by {ownerName}</span>}
           <span className="opacity-50">(view only)</span>
+          {history && branchId && history.branches.length > 1 && (
+            <BranchChip
+              source="view"
+              controls={{
+                history,
+                current: branchId,
+                onOpen: async (id) => {
+                  applyView(await getProjectView(viewUuid, id));
+                  track("branch-switch", { source: "view" });
+                },
+              }}
+            />
+          )}
           {description && (
             <>
               <span className="opacity-40">|</span>

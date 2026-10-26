@@ -182,14 +182,15 @@ def _unlinked_customs(data, library_ids):
             yield d
 
 
-def found_in_projects(projects, library_ids):
+def found_in_projects(designs, library_ids):
     """
     Custom parts that live only inside the owner's projects, one entry per
-    distinct part, each with the projects that hold it.
+    distinct part, each with the projects that hold it. `designs` are
+    (project, data) pairs, one per branch.
     """
     groups = {}
-    for project in projects:
-        for d in _unlinked_customs(project.data, library_ids):
+    for project, data in designs:
+        for d in _unlinked_customs(data, library_ids):
             key = part_key(d)
             group = groups.setdefault(key, {"key": key, "part": stored_part(d), "projects": []})
             if not any(p["edit_uuid"] == str(project.edit_uuid) for p in group["projects"]):

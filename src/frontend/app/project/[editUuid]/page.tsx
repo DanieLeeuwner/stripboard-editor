@@ -3,22 +3,20 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { useProjectStore } from "@/store/useProjectStore";
-import { getProject, saveProject } from "@/lib/api";
+import { getProject, saveProject, type ProjectDetail } from "@/lib/api";
 import { track } from "@/lib/track";
-import { Project } from "@/types";
 import SchematicEditor from "@/components/SchematicEditor";
 import StripboardEditor from "@/components/StripboardEditor";
 import ProjectToolbar from "@/components/ProjectToolbar";
 import SplitPane from "@/components/SplitPane";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import ShortcutOverlay from "@/components/ShortcutOverlay";
+import { useBranches } from "@/hooks/useBranches";
 
 export default function ProjectEditorPage() {
   const params = useParams();
   const editUuid = params.editUuid as string;
-  const loadProject = useProjectStore((s) => s.loadProject);
   const isMobile = useIsMobile();
-  const setProjectName = useProjectStore((s) => s.setProjectName);
   const projectName = useProjectStore((s) => s.name);
 
   useEffect(() => {
@@ -35,8 +33,9 @@ export default function ProjectEditorPage() {
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState(false);
-  const savingRef = useRef(false);
   const rerunRef = useRef(false);
+  const branches = useBranches(editUuid);
+  const { adopt, noteSaved, rescue, branchRef, savingRef } = branches;
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -49,10 +48,9 @@ export default function ProjectEditorPage() {
   }, []);
 
   useEffect(() => {
-    getProject(editUuid)
-      .then((project) => {
-        loadProject(project.data as unknown as Project);
-        setProjectName(project.name);
+    getProject(editUuid, "active")
+      .then((project: ProjectDetail) => {
+        adopt(project);
         setViewUuid(project.view_uuid);
         setLoading(false);
       })
@@ -60,7 +58,7 @@ export default function ProjectEditorPage() {
         setError(err.message);
         setLoading(false);
       });
-  }, [editUuid, loadProject]);
+  }, [editUuid, adopt]);
 
   const doSave = useCallback(async (): Promise<boolean> => {
     if (savingRef.current) {
@@ -74,15 +72,24 @@ export default function ProjectEditorPage() {
       const store = useProjectStore.getState();
       const seq = store._editSeq;
       const data = store.exportProject();
-      await saveProject(editUuid, data.name, data as unknown as Record<string, unknown>);
+      const branch = branchRef.current ?? undefined;
+      const saved = await saveProject(editUuid, data.name, data as unknown as Record<string, unknown>, branch);
       if (useProjectStore.getState()._editSeq === seq) {
         useProjectStore.getState().markClean();
       }
+      noteSaved(saved);
       setLastSaved(new Date());
       setSaveError(false);
       ok = true;
-    } catch {
-      setSaveError(true);
+    } catch (e) {
+      // The open branch may be gone: merged or deleted in another tab
+      if (await rescue(e)) {
+        setLastSaved(new Date());
+        setSaveError(false);
+        ok = true;
+      } else {
+        setSaveError(true);
+      }
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -92,7 +99,7 @@ export default function ProjectEditorPage() {
       void doSave();
     }
     return ok;
-  }, [editUuid]);
+  }, [editUuid, branchRef, savingRef, noteSaved, rescue]);
 
   const handleSave = doSave;
 
@@ -121,13 +128,16 @@ export default function ProjectEditorPage() {
     const unsub = useProjectStore.subscribe((state) => {
       if (!state.isDirty) return;
       clearTimeout(timeout);
-      timeout = setTimeout(() => { void doSave(); }, 1000); // debounce 1s after the last edit
+      // debounce 1s after the last edit; by then a branch switch may have saved it already
+      timeout = setTimeout(() => { if (useProjectStore.getState().isDirty) void doSave(); }, 1000);
     });
     return () => {
       unsub();
       clearTimeout(timeout);
     };
   }, [loading, autoSave, doSave]);
+
+  const branchControls = branches.controls;
 
   if (loading) {
     return (
@@ -193,6 +203,7 @@ export default function ProjectEditorPage() {
         saveError={saveError}
         autoSave={autoSave}
         onToggleAutoSave={handleToggleAutoSave}
+        branches={branchControls}
       />
       <SplitPane
         left={<SchematicEditor />}

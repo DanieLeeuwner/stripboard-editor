@@ -88,7 +88,12 @@ be imported again.
 link to bookmark, and unsaved work is kept in the browser and can be restored.
 An account collects projects in a dashboard and adds an edit link and a
 view-only link, and anyone viewing a shared project can fork it into their own
-editable copy. Projects can carry a description and notes.
+editable copy that keeps following the original. Projects can carry a
+description and notes.
+
+**Branches.** A project can have branches: copies of the design to try an idea
+on, saved separately, kept up to date with main and merged back with a review
+of every change and a choice wherever both sides changed the same thing.
 
 Every page below is also served as clean markdown at the same URL with .md
 appended, which is what the links point to. The whole set concatenated into
@@ -98,7 +103,8 @@ Scraping, quoting and citing these pages is welcome.
 
 ## Docs
 
-- [Quick guide](https://stripboard-editor.com/guide.md): workflow, both editors, placing and wiring by hand, auto-layout settings, printing, exporting, saving and sharing, and every keyboard shortcut. HTML version at https://stripboard-editor.com/guide
+- [Quick guide](https://stripboard-editor.com/guide.md): workflow, both editors, placing and wiring by hand, auto-layout settings, printing, exporting, branches, saving and sharing, and every keyboard shortcut. HTML version at https://stripboard-editor.com/guide
+- [How branches work](https://stripboard-editor.com/how-branches-work.md): branches inside a project, step by step on an example — starting a branch, switching, updating from main, merging back with conflicts and the board choice, reading the history graph, forks that follow their original, and what view links show. HTML version at https://stripboard-editor.com/how-branches-work has the screenshots
 - [How auto-layout works](https://stripboard-editor.com/how-auto-layout-works.md): full explanation of the layouter — what simulated annealing is, the four properties a problem needs for it, what makes a stripboard layout good, the coordinate-free board description and its moves, decoding, scoring, the run schedule, the finishing router, and related work. Every interactive figure on the page is described in the text. HTML version at https://stripboard-editor.com/how-auto-layout-works has the playable versions
 
 ## Site
@@ -108,6 +114,6 @@ Scraping, quoting and citing these pages is welcome.
 
 ## Optional
 
-- [Everything in one file](https://stripboard-editor.com/llms-full.txt): all of the above concatenated, for agents that would rather make one fetch than five
+- [Everything in one file](https://stripboard-editor.com/llms-full.txt): all of the above concatenated, for agents that would rather make one fetch than six
 - [Privacy policy](https://stripboard-editor.com/privacy.md): what data is collected, where it is stored and how it is used. HTML version at https://stripboard-editor.com/privacy
 - [Karl Funke](https://karl-funke.com): the author of Stripboard Editor

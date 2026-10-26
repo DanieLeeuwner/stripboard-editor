@@ -208,11 +208,21 @@ Full explanation of the algorithm: https://stripboard-editor.com/how-auto-layout
 - **Export > Netlist** writes a KiCad netlist containing parts, values, pin numbers and nets, so a prototype can become a PCB. Most parts map to stock KiCad footprints; the rest ship as a small footprint library in the same zip, added once under Preferences > Manage Footprint Libraries using the nickname shown in the pop-up.
 - A netlist holds connections, not drawings. Netlist import is not supported.
 
+## Branches
+
+Branches are a very simple implementation of the branches of Git and GitHub, a version control system. A branch is a copy of the project to try new things on; if the result is good, it is merged back into the main project.
+
+- The branch being edited is shown next to the project name in the toolbar. Clicking it switches branches or starts a new branch from the open one.
+- Each branch is saved on its own. When the branch it started from changes, an amber dot appears; "Update from main" takes those changes in.
+- "Merge into main" brings a branch back. Where both branches changed the same thing, the user picks which version to keep. The merged branch is closed and stays in the history.
+
+A full walkthrough is at https://stripboard-editor.com/how-branches-work.md
+
 ## Saving and sharing
 
 - No account is required. The first save returns a unique link; bookmark it to return to the project.
 - An account collects projects in one dashboard and adds sharing: an edit link for full access and a view-only link.
-- Anyone viewing a shared project can fork it into their own editable copy.
+- Anyone viewing a shared project can fork it into their own editable copy. A fork keeps following the original and can take in its later changes.
 
 ## Keyboard shortcuts
 
@@ -525,10 +535,79 @@ Apart from Vero Designer, each of these covers at most one half of the job: the 
 `;
 
 /** Every markdown twin, in reading order, for llms-full.txt. */
+export const BRANCHES_MD = `# How Branches Work
+
+A branch is a copy of a project's design that can be changed without touching the version that works. Branches are fully optional: a project that never starts one stays on main and works exactly as before.
+
+For readers who know Git or GitHub: the editor implements a simplified version of branches. There are no commits; a branch is always just its latest saved state, and merges work with those states directly.
+
+This page follows one example project, a 555 LED blinker on 9 V, from start to finish.
+
+## Why branches
+
+The blinker works and is laid out on a 13 x 9 board. The question is whether it fits on something smaller. Instead of duplicating the project (two copies that drift apart), a branch keeps the experiment inside the same project: switch between the two at any time, carry changes from one to the other, and fold the experiment back in when it works.
+
+## Starting a branch
+
+- Every project starts with one branch, \`main\`. Its name sits next to the project name in the editor toolbar.
+- Clicking the branch name opens the branch menu: every open branch, "New branch from <current>...", and "Manage branches..." (the branches window).
+- A new branch asks for a name, starts as an exact copy of the branch it came from, and opens right away. From then on the two are saved separately.
+- In the example, the board on the branch "smaller board" was laid out again and now fits on 12 x 8. Main kept its 13 x 9 board.
+
+## Switching between branches
+
+- Pick another branch in the branch menu. With auto-save on, changes are saved first.
+- With auto-save off and unsaved changes, a dialog offers: Cancel (stay), Discard and switch, Save and switch.
+- The editor reopens the branch last worked on. Each branch keeps its own board, schematic, notes and settings.
+
+## Keeping up with main
+
+- Switching back and forth is fine. In the example, the author switched back to main and changed R2 from 10k to 47k (slower blink). The branch was started before that, so it still has 10k.
+- After switching back to the branch, its name shows an amber dot, and the branches window says "main has changed since this branch last took in its changes".
+- "Update from main" takes main's changes into the branch. A review lists what comes in first ("Parts changed in the schematic: R2"). The branch keeps its own changes, so its smaller board stays.
+- The history graph then shows the update as a curve from main's line into the branch's line.
+
+## Merging back
+
+- Select the branch in the branches window and click "Merge into main". Main takes in everything the branch changed.
+- Conflicts: R3 was changed on both branches (330 on the branch, 1k on main). Only things changed differently on both sides need a decision; this is called a merge conflict. Each conflict offers "Keep main's" or "Take <branch>'s", and there are shortcuts to pick one side for all. Deleted-on-one-side, changed-on-the-other is also a conflict ("Keep it deleted" / "Delete it").
+- Board conflicts: if both branches changed the board (moved parts, cuts or wires), the review asks for one of: keep main's board, take the branch's board, or combine both. Keeping one board is always clean; parts that board does not know yet arrive unplaced. Combining takes every move, cut and wire from both and can leave parts overlapping, which the editor outlines afterwards.
+- After the merge the editor opens main. The merged branch is closed: it leaves the branch menu, cannot be edited, and stays in the history. To keep experimenting, start a new branch from main.
+
+## Reading the history
+
+The branches window shows the history newest first, one coloured line per branch.
+
+- A hollow dot is where a branch started; a filled dot is a merge or the branch's last save.
+- A curve between two lines is a branch starting from another, or changes moving between them.
+- "Open" marks the branch being edited. Clicking a row selects that branch and shows what can be done with it (open, new branch from here, merge into its parent, update from its parent, rename, delete).
+
+Deleting a branch removes it from the history too. Main cannot be deleted, and neither can a branch other branches started from.
+
+## Forks
+
+- Anyone with a view link can click "Fork & Edit" for their own editable copy. The fork's main follows the original project's main.
+- When the original changes, the fork shows the amber dot, and "Update from <original project>" takes the changes in, with the same review. In the example the original's LED changed from red to green and the fork took it in.
+- It only works in that direction: a fork cannot change the original, so sharing a view link never lets anyone touch the project.
+
+## View links
+
+A view link always opens main. When a project has more than one branch, the view page shows the branch name in its header, so visitors can look at the other branches and the history without changing anything.
+
+## Good to know
+
+- Export and Print use the open branch.
+- Duplicate (project list) copies the whole project: every branch and its history.
+- The project list previews the branch last worked on.
+- A merge compares three versions: the two branches now and their last common state. That is how it tells a part added on one side from a part removed on the other.
+- The schematic, board and settings are merged item by item. Parts are matched by identity, cuts and board wires by position, so a layout redone on one side does not duplicate wires.
+`;
+
 export const AGENT_DOCS: { path: string; body: string }[] = [
   { path: "/index.md", body: INDEX_MD },
   { path: "/guide.md", body: GUIDE_MD },
   { path: "/how-auto-layout-works.md", body: AUTO_LAYOUT_MD },
+  { path: "/how-branches-work.md", body: BRANCHES_MD },
   { path: "/updates.md", body: UPDATES_MD },
   { path: "/privacy.md", body: PRIVACY_MD },
 ];

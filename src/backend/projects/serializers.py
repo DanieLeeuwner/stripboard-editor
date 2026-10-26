@@ -1,13 +1,9 @@
-import copy
-import logging
 import re
 
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .migrations_data.pipeline import migrate_to_current
+from .branches import MAX_PROJECT_DATA_BYTES, clean_data
 from .models import Project, Feedback, FeedbackReply
-
-_log = logging.getLogger(__name__)
 
 # SHA-256 hex digest: exactly 64 lowercase hex characters
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -24,22 +20,8 @@ def sanitize_name(value: str) -> str:
     return cleaned
 
 
-class MigratingDataMixin:
-    """Serve `data` on the current schema without writing anything back: a
-    row the one-shot command has not reached yet, or a read-only view, still
-    renders correctly. Idempotent, so migrated rows pass straight through."""
-
-    def to_representation(self, instance):
-        rep = super().to_representation(instance)
-        if isinstance(rep.get("data"), dict):
-            try:
-                rep["data"], _ = migrate_to_current(copy.deepcopy(rep["data"]))
-            except Exception:
-                _log.exception("migration read-hook failed")
-        return rep
-
-
 class ProjectListSerializer(serializers.ModelSerializer):
+    """A project in the user's list, previewed by the branch last worked on."""
     fork_count = serializers.IntegerField(source="forks.count", read_only=True)
     preview_data = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
@@ -59,14 +41,19 @@ class ProjectListSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    @staticmethod
+    def _design(obj):
+        branch = obj.active_branch or obj.main_branch
+        return (branch.data if branch else None) or {}
+
     def get_description(self, obj):
         """The project's one-line description, which lives in the project JSON."""
-        value = (obj.data or {}).get("description")
+        value = self._design(obj).get("description")
         return value[:200] if isinstance(value, str) else ""
 
     def get_preview_data(self, obj):
         """Extract minimal data needed for stripboard preview thumbnail."""
-        data = obj.data or {}
+        data = self._design(obj)
         components = data.get("components", [])
         # An off-board part is on the board as its solder pads, kept in "leads"
         placed = [
@@ -84,76 +71,6 @@ class ProjectListSerializer(serializers.ModelSerializer):
         }
 
 
-class ProjectDetailSerializer(MigratingDataMixin, serializers.ModelSerializer):
-    fork_count = serializers.IntegerField(source="forks.count", read_only=True)
-    owner_name = serializers.CharField(source="owner.username", read_only=True, default=None)
-
-    class Meta:
-        model = Project
-        fields = [
-            "edit_uuid",
-            "view_uuid",
-            "name",
-            "data",
-            "owner_name",
-            "fork_count",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = [
-            "edit_uuid",
-            "view_uuid",
-            "owner_name",
-            "fork_count",
-            "created_at",
-            "updated_at",
-        ]
-
-    def validate_data(self, value):
-        import json
-        size = len(json.dumps(value).encode("utf-8"))
-        if size > MAX_PROJECT_DATA_BYTES:
-            raise serializers.ValidationError(
-                f"Project data too large ({size} bytes). Maximum is {MAX_PROJECT_DATA_BYTES} bytes."
-            )
-        try:
-            migrated, _ = migrate_to_current(value)
-            return migrated
-        except Exception:
-            _log.exception("migration save-hook failed for incoming PUT")
-            return value
-
-
-class ProjectViewSerializer(MigratingDataMixin, serializers.ModelSerializer):
-    """Read-only serializer for view-only access. Minimal fields, no edit_uuid."""
-    owner_name = serializers.CharField(source="owner.username", read_only=True, default=None)
-
-    class Meta:
-        model = Project
-        fields = [
-            "view_uuid",
-            "name",
-            "data",
-            "owner_name",
-        ]
-        read_only_fields = fields
-
-    def validate_name(self, value):
-        return sanitize_name(value)
-
-    def validate_data(self, value):
-        import json
-        size = len(json.dumps(value).encode("utf-8"))
-        if size > MAX_PROJECT_DATA_BYTES:
-            raise serializers.ValidationError(
-                f"Project data too large ({size} bytes). Maximum is {MAX_PROJECT_DATA_BYTES} bytes."
-            )
-        return value
-
-
-MAX_PROJECT_DATA_BYTES = 1024_000  # 1MB
-
-
 class ProjectCreateSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255, default="Untitled Project")
     data = serializers.JSONField()
@@ -162,18 +79,7 @@ class ProjectCreateSerializer(serializers.Serializer):
         return sanitize_name(value)
 
     def validate_data(self, value):
-        import json
-        size = len(json.dumps(value).encode("utf-8"))
-        if size > MAX_PROJECT_DATA_BYTES:
-            raise serializers.ValidationError(
-                f"Project data too large ({size} bytes). Maximum is {MAX_PROJECT_DATA_BYTES} bytes."
-            )
-        try:
-            migrated, _ = migrate_to_current(value)
-            return migrated
-        except Exception:
-            _log.exception("migration create-hook failed")
-            return value
+        return clean_data(value)
 
 
 class LayoutRatingCreateSerializer(serializers.Serializer):

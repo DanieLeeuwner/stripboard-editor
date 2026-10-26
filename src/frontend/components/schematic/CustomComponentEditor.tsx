@@ -491,7 +491,9 @@ export default function CustomComponentEditor({ editing, libraryOnly = false, in
   const updateLibrary = () => run(async () => {
     const id = libraryId ?? def!.library!.id;
     const usedIn = confirm!.usage.length;
-    const saved = await updateLibraryPart(id, libraryPayload(confirm!.part), { updateProjects: true, skipProject: editUuid });
+    const saved = await updateLibraryPart(id, libraryPayload(confirm!.part), {
+      updateProjects: true, skipProject: editUuid, skipBranch: useProjectStore.getState().branchId ?? undefined,
+    });
     track("part-library-update", { ...shape(), projects: usedIn });
     upsertLibraryPart(saved);
     if (!libraryOnly) applyLibraryUpdate(libraryDef(saved));
@@ -523,7 +525,7 @@ export default function CustomComponentEditor({ editing, libraryOnly = false, in
       onMouseUp={() => setDrag(null)}
     >
       <div
-        className="font-sans bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 w-full max-w-5xl max-h-[96vh] overflow-auto"
+        className="font-sans bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-6 w-full max-w-5xl max-h-[96vh] overflow-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">

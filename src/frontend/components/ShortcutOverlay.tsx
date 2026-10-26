@@ -71,7 +71,7 @@ export default function ShortcutOverlay() {
       onClick={() => setShow(false)}
     >
       <div
-        className="font-mono bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900/50 p-6 max-w-lg w-[calc(100%-2rem)] max-h-[80vh] overflow-y-auto"
+        className="font-mono bg-white dark:bg-neutral-900 rounded-lg border border-neutral-300 dark:border-neutral-600 shadow-xl dark:shadow-neutral-900/50 p-6 max-w-lg w-[calc(100%-2rem)] max-h-[80vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">

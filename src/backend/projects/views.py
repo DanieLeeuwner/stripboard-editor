@@ -1,3 +1,4 @@
+import copy
 import gzip
 import hmac
 import json
@@ -12,6 +13,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.contrib.auth.tokens import default_token_generator
 from django.contrib.sessions.models import Session
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
 from django.http import FileResponse
 from django.middleware.csrf import get_token
@@ -28,12 +30,15 @@ from rest_framework.decorators import api_view, permission_classes, throttle_cla
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework.response import Response
 
+from .branches import (
+    MAX_BRANCH_NAME, MAX_BRANCHES_PER_PROJECT, clean_data, copy_history, gz, history_json, merge_pair,
+    readable, ungz, version as branch_version,
+)
 from .migrations_data.pipeline import migrate_to_current
-from .models import Project, Feedback, LayoutRating, UserPart
+from .models import Branch, BranchMerge, Project, Feedback, LayoutRating, UserPart
 from .serializers import (
+    HTML_TAG_PATTERN,
     ProjectListSerializer,
-    ProjectDetailSerializer,
-    ProjectViewSerializer,
     ProjectCreateSerializer,
     sanitize_name,
     UserRegistrationSerializer,
@@ -83,6 +88,74 @@ def _project_limit_response(user):
     return None
 
 
+def _find_branch(project, branch_id, default):
+    """The project's branch `branch_id` ("active" for the one last worked on),
+    `default` when none is asked for, or None when it is not one of its own."""
+    if not branch_id:
+        return default
+    if branch_id == "active":
+        return project.active_branch or project.main_branch
+    try:
+        return project.branches.get(id=branch_id)
+    except (Branch.DoesNotExist, DjangoValidationError, ValueError):
+        return None
+
+
+# `code` lets the editor tell a branch that is gone from other failures: a
+# branch merged or deleted in another tab cannot take this tab's saves
+def _branch_not_found():
+    return Response({"error": "Branch not found", "code": "branch_missing"}, status=status.HTTP_404_NOT_FOUND)
+
+
+def _branch_closed(branch):
+    return Response(
+        {"error": f'"{branch.name}" was merged and is closed', "code": "branch_closed"},
+        status=status.HTTP_400_BAD_REQUEST,
+    )
+
+
+def _upstream_json(project):
+    """For a fork: the original project, by its view link only."""
+    main = project.main_branch
+    up = main.parent if main is not None else None
+    if up is None or up.project_id == project.id:
+        return None
+    return {"view_uuid": str(up.project.view_uuid), "name": up.project.name, "branch": str(up.id)}
+
+
+def _detail_json(project, branch):
+    """What the editor gets: one branch's design and the project's history."""
+    return {
+        "edit_uuid": str(project.edit_uuid),
+        "view_uuid": str(project.view_uuid),
+        "name": project.name,
+        "owner_name": project.owner.username if project.owner else None,
+        "fork_count": project.forks.count(),
+        "created_at": project.created_at,
+        "updated_at": project.updated_at,
+        "branch": str(branch.id),
+        "branch_version": branch_version(branch),
+        "data": readable(branch.data, project.name),
+        "main_branch": str(project.main_branch_id),
+        "active_branch": str(project.active_branch_id or project.main_branch_id),
+        "upstream": _upstream_json(project),
+        **history_json(project),
+    }
+
+
+def _view_json(project, branch):
+    """What a view link gets: no edit uuid, and no link to a fork's original."""
+    return {
+        "view_uuid": str(project.view_uuid),
+        "name": project.name,
+        "owner_name": project.owner.username if project.owner else None,
+        "branch": str(branch.id),
+        "data": readable(branch.data, project.name),
+        "main_branch": str(project.main_branch_id),
+        **history_json(project),
+    }
+
+
 @api_view(["POST"])
 @throttle_classes([ProjectCreateThrottle])
 def project_create(request):
@@ -103,32 +176,52 @@ def project_create(request):
     serializer = ProjectCreateSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
-    project = Project.objects.create(
+    project = Project.create_with_main(
+        serializer.validated_data["data"],
         name=serializer.validated_data["name"],
-        data=serializer.validated_data["data"],
         owner=request.user if request.user.is_authenticated else None,
     )
-    return Response(
-        ProjectDetailSerializer(project).data,
-        status=status.HTTP_201_CREATED,
-    )
+    return Response(_detail_json(project, project.main_branch), status=status.HTTP_201_CREATED)
 
 
 @api_view(["GET", "PUT", "DELETE"])
 def project_detail(request, edit_uuid):
+    """One branch of a project: `branch` names it ("active" for the one last
+    worked on). Without it this is the main branch, which keeps editors
+    loaded before branches existed reading and saving the branch they know."""
     try:
-        project = Project.objects.get(edit_uuid=edit_uuid)
+        project = Project.objects.select_related("main_branch", "active_branch", "owner").get(edit_uuid=edit_uuid)
     except Project.DoesNotExist:
         return Response({"error": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
 
     if request.method == "GET":
-        return Response(ProjectDetailSerializer(project).data)
+        branch = _find_branch(project, request.query_params.get("branch"), project.main_branch)
+        if branch is None:
+            return _branch_not_found()
+        return Response(_detail_json(project, branch))
 
     if request.method == "PUT":
-        serializer = ProjectDetailSerializer(project, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
+        branch = _find_branch(project, request.data.get("branch"), project.main_branch)
+        if branch is None:
+            return _branch_not_found()
+        if branch.closed_at is not None:
+            return _branch_closed(branch)
+        name = request.data.get("name")
+        if isinstance(name, str):
+            project.name = sanitize_name(name)[:255]
+        if "data" in request.data:
+            branch.data = clean_data(request.data["data"])
+            branch.save(update_fields=["data", "updated_at"])
+        # Saving a branch makes it the one the editor reopens
+        project.active_branch = branch
+        project.save(update_fields=["name", "active_branch", "updated_at"])
+        # Autosave sends this every second: the history, not the design back
+        return Response({
+            "branch": str(branch.id),
+            "branch_version": branch_version(branch),
+            "updated_at": project.updated_at,
+            **history_json(project),
+        })
 
     if request.method == "DELETE":
         if not request.user.is_authenticated or project.owner != request.user:
@@ -139,12 +232,15 @@ def project_detail(request, edit_uuid):
 
 @api_view(["GET"])
 def project_view(request, view_uuid):
+    """A view link shows the main branch; `branch` picks another to look at."""
     try:
-        project = Project.objects.get(view_uuid=view_uuid)
+        project = Project.objects.select_related("main_branch", "owner").get(view_uuid=view_uuid)
     except Project.DoesNotExist:
         return Response({"error": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    return Response(ProjectViewSerializer(project).data)
+    branch = _find_branch(project, request.query_params.get("branch"), project.main_branch)
+    if branch is None or request.query_params.get("branch") == "active":
+        return _branch_not_found()
+    return Response(_view_json(project, branch))
 
 
 @api_view(["POST"])
@@ -181,19 +277,22 @@ def project_fork(request, view_uuid):
     if limit:
         return limit
 
-    # A fork of a row the one-shot command has not reached yet still starts
-    # on the current schema.
-    data, _ = migrate_to_current(original.data)
-    forked = Project.objects.create(
-        name=f"{original.name} (fork)",
-        data=data,
-        owner=request.user if request.user.is_authenticated else None,
-        fork_of=original,
-    )
-    return Response(
-        ProjectDetailSerializer(forked).data,
-        status=status.HTTP_201_CREATED,
-    )
+    # The fork's main starts as the original's main and keeps it as its
+    # parent, so the original's later changes can be taken in.
+    upstream = original.main_branch
+    data, _ = migrate_to_current(copy.deepcopy(upstream.data))
+    with transaction.atomic():
+        forked = Project.create_with_main(
+            data,
+            name=f"{original.name[:248]} (fork)",
+            owner=request.user if request.user.is_authenticated else None,
+            fork_of=original,
+        )
+        main = forked.main_branch
+        main.parent = upstream
+        main.base_gz = gz(upstream.data)
+        main.save(update_fields=["parent", "base_gz"])
+    return Response(_detail_json(forked, main), status=status.HTTP_201_CREATED)
 
 
 @api_view(["POST"])
@@ -218,7 +317,7 @@ def project_claim(request, edit_uuid):
         )
 
     project = Project.objects.get(edit_uuid=edit_uuid)
-    return Response(ProjectDetailSerializer(project).data)
+    return Response(_detail_json(project, project.main_branch))
 
 
 def _owned_project(request, edit_uuid):
@@ -236,12 +335,13 @@ def project_duplicate(request, edit_uuid):
     if limit:
         return limit
 
-    data, _ = migrate_to_current(original.data)
     requested = request.data.get("name")
     name = sanitize_name(requested)[:255] if isinstance(requested, str) else f"{original.name[:248]} (copy)"
-    data["name"] = name
-    copy = Project.objects.create(name=name, data=data, owner=request.user)
-    return Response(ProjectListSerializer(copy).data, status=status.HTTP_201_CREATED)
+    # A copy carries the whole history; a copy of a fork still follows the original
+    with transaction.atomic():
+        duplicate = Project.objects.create(name=name, owner=request.user, fork_of=original.fork_of)
+        copy_history(original, duplicate)
+    return Response(ProjectListSerializer(duplicate).data, status=status.HTTP_201_CREATED)
 
 
 @api_view(["POST"])
@@ -254,12 +354,9 @@ def project_rename(request, edit_uuid):
     if not isinstance(name, str):
         return Response({"error": "Expected a name"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # The name is kept in two places: the row (project lists) and the project
-    # JSON (the editor store, exports).
+    # The name belongs to the project; every branch's data is served with it
     project.name = sanitize_name(name)[:255]
-    if isinstance(project.data, dict):
-        project.data["name"] = project.name
-    project.save(update_fields=["name", "data", "updated_at"])
+    project.save(update_fields=["name", "updated_at"])
     return Response({"name": project.name})
 
 
@@ -274,7 +371,11 @@ def user_projects(request):
         limit = min(max(int(request.query_params.get("limit", PROJECTS_PAGE_SIZE)), 1), 100)
     except ValueError:
         limit = PROJECTS_PAGE_SIZE
-    projects = Project.objects.filter(owner=request.user).order_by("-updated_at", "-id")
+    projects = (
+        Project.objects.filter(owner=request.user)
+        .select_related("active_branch", "main_branch")
+        .order_by("-updated_at", "-id")
+    )
     before = request.query_params.get("before")
     if before:
         try:
@@ -292,7 +393,234 @@ def user_projects(request):
     })
 
 
+# ── Branches ────────────────────────────────────────────
+# Anyone holding the edit link manages a project's branches, as they edit it.
+
+
+def _edit_project(edit_uuid):
+    return (
+        Project.objects.select_related("main_branch", "active_branch", "owner")
+        .filter(edit_uuid=edit_uuid).first()
+    )
+
+
+def _branch_name(project, value, exclude=None):
+    """A clean, unused branch name, or an error message."""
+    if not isinstance(value, str):
+        return None, "Expected a name"
+    name = HTML_TAG_PATTERN.sub("", value).strip()[:MAX_BRANCH_NAME]
+    if not name:
+        return None, "The name is empty"
+    taken = project.branches.filter(name__iexact=name)
+    if exclude is not None:
+        taken = taken.exclude(pk=exclude.pk)
+    if taken.exists():
+        return None, f'There already is a branch called "{name}"'
+    return name, None
+
+
+@api_view(["POST"])
+def branch_create(request, edit_uuid):
+    """A new branch starting from `from`, holding a copy of its design."""
+    project = _edit_project(edit_uuid)
+    if project is None:
+        return Response({"error": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+    # Merged branches are history: they do not take up room
+    if project.branches.filter(closed_at__isnull=True).count() >= MAX_BRANCHES_PER_PROJECT:
+        return Response(
+            {"error": f"A project can have at most {MAX_BRANCHES_PER_PROJECT} branches. Delete one to make room."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    source = _find_branch(project, request.data.get("from"), None)
+    if source is None:
+        return _branch_not_found()
+    if source.closed_at is not None:
+        return _branch_closed(source)
+    name, error = _branch_name(project, request.data.get("name"))
+    if error:
+        return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+    with transaction.atomic():
+        branch = Branch.objects.create(
+            project=project, name=name, data=copy.deepcopy(source.data), parent=source, base_gz=gz(source.data),
+        )
+        project.active_branch = branch
+        project.save(update_fields=["active_branch", "updated_at"])
+    return Response(_detail_json(project, branch), status=status.HTTP_201_CREATED)
+
+
+@api_view(["PATCH", "DELETE"])
+def branch_detail(request, edit_uuid, branch_id):
+    project = _edit_project(edit_uuid)
+    if project is None:
+        return Response({"error": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+    branch = _find_branch(project, str(branch_id), None)
+    if branch is None:
+        return _branch_not_found()
+    if branch.id == project.main_branch_id:
+        return Response({"error": "The main branch cannot be renamed or deleted"}, status=status.HTTP_400_BAD_REQUEST)
+
+    if request.method == "PATCH":
+        name, error = _branch_name(project, request.data.get("name"), exclude=branch)
+        if error:
+            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+        # A rename is not an edit: it leaves the branch's version alone
+        Branch.objects.filter(pk=branch.pk).update(name=name)
+        return Response(history_json(project))
+
+    # A merged branch is history: it goes only with the branch it was merged into
+    if branch.closed_at is not None:
+        return _branch_closed(branch)
+    # An open branch started from this one would be left without a parent to merge with
+    if branch.children.filter(project=project, closed_at__isnull=True).exists():
+        return Response(
+            {"error": "Other branches start from this one. Delete or merge them first."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    with transaction.atomic():
+        if project.active_branch_id == branch.id:
+            project.active_branch = project.main_branch
+            project.save(update_fields=["active_branch"])
+        Branch.objects.filter(id__in=_with_merged_branches(project, branch)).delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _with_merged_branches(project, branch):
+    """The branch and every merged branch under it, however deep: a merged
+    branch is kept only as the history of the branch it was merged into."""
+    ids, todo = [branch.id], [branch.id]
+    while todo:
+        todo = list(
+            Branch.objects.filter(project=project, parent_id__in=todo, closed_at__isnull=False).values_list("id", flat=True)
+        )
+        ids += todo
+    return ids
+
+
+@api_view(["POST"])
+def branch_activate(request, edit_uuid, branch_id):
+    """Switching to a branch makes it the one the editor reopens."""
+    project = _edit_project(edit_uuid)
+    if project is None:
+        return Response({"error": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+    branch = _find_branch(project, str(branch_id), None)
+    if branch is None:
+        return _branch_not_found()
+    if branch.closed_at is not None:
+        return _branch_closed(branch)
+    Project.objects.filter(pk=project.pk).update(active_branch=branch)
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _merge_source(target, source_id):
+    """The branch `source_id`, when it can merge into `target`: the target's
+    parent (for a fork's main, in the original project) or one of the
+    target's own branches."""
+    try:
+        source = Branch.objects.select_related("project").get(id=source_id)
+    except (Branch.DoesNotExist, DjangoValidationError, ValueError, TypeError):
+        return None, None
+    kind = merge_pair(target, source)
+    return (source, kind) if kind else (None, None)
+
+
+def _merge_refusal(project, target, source, kind):
+    """Why these two cannot be merged now, or None."""
+    for b in (target, source):
+        if b.closed_at is not None:
+            return _branch_closed(b)
+    # Merging into the parent closes the branch: branches started from it
+    # would be left without a parent to merge with
+    if kind == "into-parent" and source.children.filter(project=project, closed_at__isnull=True).exists():
+        return Response(
+            {"error": f'Other branches start from "{source.name}". Merge or delete them first.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return None
+
+
+def _merge_base(target, source, kind):
+    return ungz(target.base_gz if kind == "from-parent" else source.base_gz)
+
+
+@api_view(["GET", "POST"])
+def branch_merge(request, edit_uuid, branch_id):
+    """GET: the three states a merge of `source` into this branch works on
+    (their last common state and both branches now). POST: the merged design
+    the editor worked out, saved to this branch. The merge is refused when
+    either branch changed since the GET, so nothing saved meanwhile is lost."""
+    project = _edit_project(edit_uuid)
+    if project is None:
+        return Response({"error": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+    target = _find_branch(project, str(branch_id), None)
+    if target is None:
+        return _branch_not_found()
+    params = request.query_params if request.method == "GET" else request.data
+    source, kind = _merge_source(target, params.get("source"))
+    if source is None:
+        return Response({"error": "These branches cannot be merged"}, status=status.HTTP_400_BAD_REQUEST)
+    refusal = _merge_refusal(project, target, source, kind)
+    if refusal:
+        return refusal
+
+    if request.method == "GET":
+        base = _merge_base(target, source, kind)
+        if base is None:
+            return Response({"error": "These branches have no common state"}, status=status.HTTP_409_CONFLICT)
+        return Response({
+            "kind": kind,
+            "base": readable(base, project.name),
+            "source": {"id": str(source.id), "name": source.name, "version": branch_version(source),
+                       "data": readable(source.data, project.name)},
+            "target": {"id": str(target.id), "name": target.name, "version": branch_version(target),
+                       "data": readable(target.data, project.name)},
+        })
+
+    data = clean_data(request.data.get("data"))
+    with transaction.atomic():
+        locked = {b.id: b for b in Branch.objects.select_for_update().filter(id__in=[source.id, target.id])}
+        if source.id not in locked or target.id not in locked:
+            return Response(
+                {"error": "A branch was deleted while merging.", "code": "branch_missing"},
+                status=status.HTTP_409_CONFLICT,
+            )
+        source, target = locked[source.id], locked[target.id]
+        # Checked again under the lock: another tab may have merged or branched meanwhile
+        refusal = _merge_refusal(project, target, source, kind)
+        if refusal:
+            return refusal
+        if (branch_version(source) != request.data.get("source_version")
+                or branch_version(target) != request.data.get("target_version")):
+            return Response(
+                {"error": "A branch changed while merging. Start the merge again."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        target.data = data
+        target.save(update_fields=["data", "updated_at"])
+        # Both branches now hold the source's state as it was merged: that is
+        # their last common state for the next merge. Written without touching
+        # the source's version, since its design did not change.
+        merged_from = gz(source.data)
+        if kind == "from-parent":
+            Branch.objects.filter(pk=target.pk).update(base_gz=merged_from)
+        else:
+            # Its changes now live on in the parent: the branch is done
+            Branch.objects.filter(pk=source.pk).update(base_gz=merged_from, closed_at=timezone.now())
+        BranchMerge.objects.create(
+            project=project, source=source, target=target, source_name=source.name, target_name=target.name,
+        )
+        project.active_branch = target
+        project.save(update_fields=["active_branch", "updated_at"])
+    target.refresh_from_db()
+    return Response(_detail_json(project, target))
+
+
 # ── The user's part library ─────────────────────────────
+
+
+def _owned_branches(user):
+    """Every open branch of every project the user owns: a library part can be
+    in any. Merged branches are history and stay as they were."""
+    return Branch.objects.filter(project__owner=user, closed_at__isnull=True).select_related("project")
 
 
 def _part_json(p):
@@ -310,11 +638,11 @@ def user_parts(request):
         # It reads every project of the user, so only the parts page asks.
         if request.query_params.get("usage"):
             used = {}
-            for project in Project.objects.filter(owner=request.user):
-                for d in project.data.get("componentDefs") or [] if isinstance(project.data, dict) else []:
+            for branch in _owned_branches(request.user):
+                for d in branch.data.get("componentDefs") or [] if isinstance(branch.data, dict) else []:
                     lib = d.get("library") if isinstance(d, dict) else None
                     if isinstance(lib, dict):
-                        used.setdefault(lib.get("id"), set()).add(project.edit_uuid)
+                        used.setdefault(lib.get("id"), set()).add(branch.project_id)
             for row in out:
                 row["used_in"] = len(used.get(row["id"], ()))
         return Response(out)
@@ -359,7 +687,8 @@ def user_parts_import(request):
 def user_parts_found(request):
     """Custom parts that so far live only inside the user's projects."""
     library_ids = {str(i) for i in UserPart.objects.filter(owner=request.user).values_list("id", flat=True)}
-    return Response(found_in_projects(Project.objects.filter(owner=request.user), library_ids))
+    designs = [(b.project, b.data) for b in _owned_branches(request.user)]
+    return Response(found_in_projects(designs, library_ids))
 
 
 @api_view(["POST"])
@@ -373,20 +702,20 @@ def user_parts_adopt(request):
     key = request.data.get("key")
     library_ids = {str(i) for i in UserPart.objects.filter(owner=request.user).values_list("id", flat=True)}
     with transaction.atomic():
-        projects = list(Project.objects.filter(owner=request.user).select_for_update())
-        group = next((g for g in found_in_projects(projects, library_ids) if g["key"] == key), None)
+        branches = list(_owned_branches(request.user).select_for_update())
+        designs = [(b.project, b.data) for b in branches]
+        group = next((g for g in found_in_projects(designs, library_ids) if g["key"] == key), None)
         if group is None:
             return Response({"error": "Part not found in your projects"}, status=status.HTTP_404_NOT_FOUND)
         if len(library_ids) >= MAX_PARTS_PER_USER:
             return _library_full()
         created = UserPart.objects.create(owner=request.user, part=group["part"])
-        linked = 0
-        for project in projects:
-            n = link_copies(project.data, key, str(created.id), library_ids)
-            if n:
-                project.save(update_fields=["data", "updated_at"])
-                linked += 1
-    return Response({**_part_json(created), "linked_projects": linked}, status=status.HTTP_201_CREATED)
+        linked = set()
+        for branch in branches:
+            if link_copies(branch.data, key, str(created.id), library_ids):
+                branch.save(update_fields=["data", "updated_at"])
+                linked.add(branch.project_id)
+    return Response({**_part_json(created), "linked_projects": len(linked)}, status=status.HTTP_201_CREATED)
 
 
 @api_view(["PUT", "DELETE"])
@@ -407,22 +736,27 @@ def user_part_detail(request, part_id):
     if error:
         return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
     part = stored_part(part)
-    # The project being edited applies the change itself and saves it; writing
-    # it here as well would race that save
-    skip = str(request.data.get("skip_project") or "")
-    updated = 0
+    # The branch being edited applies the change itself and saves it; writing
+    # it here as well would race that save. An editor from before branches
+    # names only its project, and it was editing the main branch.
+    skip_branch = str(request.data.get("skip_branch") or "")
+    skip_project = str(request.data.get("skip_project") or "")
+    updated = set()
     with transaction.atomic():
         user_part.part = part
         user_part.rev += 1
         user_part.save()
         if request.data.get("update_projects"):
-            for project in Project.objects.filter(owner=request.user).select_for_update():
-                if str(project.edit_uuid) == skip:
+            for branch in _owned_branches(request.user).select_for_update():
+                if str(branch.id) == skip_branch or (
+                    not skip_branch and str(branch.project.edit_uuid) == skip_project
+                    and branch.id == branch.project.main_branch_id
+                ):
                     continue
-                if apply_to_project(project.data, str(user_part.id), part, user_part.rev):
-                    project.save(update_fields=["data", "updated_at"])
-                    updated += 1
-    return Response({**_part_json(user_part), "updated_projects": updated})
+                if apply_to_project(branch.data, str(user_part.id), part, user_part.rev):
+                    branch.save(update_fields=["data", "updated_at"])
+                    updated.add(branch.project_id)
+    return Response({**_part_json(user_part), "updated_projects": len(updated)})
 
 
 @cache_control(private=True, no_store=True)
@@ -432,16 +766,17 @@ def user_part_usage(request, part_id):
     """The owner's projects holding a linked copy, and how many of those are placed."""
     if not UserPart.objects.filter(id=part_id, owner=request.user).exists():
         return Response({"error": "Part not found"}, status=status.HTTP_404_NOT_FOUND)
-    out = []
-    for project in Project.objects.filter(owner=request.user):
-        copies = linked_copies(project.data, str(part_id))
+    # One entry per project; a part placed on several branches counts by the
+    # branch where it is placed most
+    out = {}
+    for branch in _owned_branches(request.user):
+        copies = linked_copies(branch.data, str(part_id))
         if copies:
-            out.append({
-                "edit_uuid": str(project.edit_uuid),
-                "name": project.name,
-                "placed": placed_count(project.data, {d.get("id") for d in copies}),
+            entry = out.setdefault(branch.project_id, {
+                "edit_uuid": str(branch.project.edit_uuid), "name": branch.project.name, "placed": 0,
             })
-    return Response(out)
+            entry["placed"] = max(entry["placed"], placed_count(branch.data, {d.get("id") for d in copies}))
+    return Response(list(out.values()))
 
 
 # ── Auth ────────────────────────────────────────────────

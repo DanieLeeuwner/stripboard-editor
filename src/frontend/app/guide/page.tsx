@@ -201,11 +201,44 @@ export default function GuidePage() {
         </section>
 
         <section className="mb-10">
+          <H2>Branches</H2>
+          <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-3">
+            Branches are a very simple implementation of the branches of Git and GitHub, a version control system.
+          </p>
+          <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-3">
+            A branch is a copy of your project where you can try new things and, if you like the result, merge them back into your main project.
+          </p>
+          <UL>
+            <li>The branch you are editing is shown next to the project name. Click it to switch, or to start a new branch from the one you are on.</li>
+            <li>Each branch is saved on its own. When the branch you started from changes, an amber dot appears; <strong>Update from main</strong> takes its changes in.</li>
+            <li><strong>Merge into main</strong> brings a branch back. Where both changed the same thing, you pick which to keep. The merged branch is closed and stays in the history.</li>
+          </UL>
+          <figure className="mt-4">
+            <img
+              src="/branches/history.webp"
+              alt="The branches window: a branch that took in main's changes and was merged back"
+              loading="lazy"
+              className="rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-sm dark:shadow-neutral-900/30 w-full dark:hidden"
+            />
+            <img
+              src="/branches/history-dark.webp"
+              alt="The branches window: a branch that took in main's changes and was merged back"
+              loading="lazy"
+              className="rounded-lg border border-neutral-200 dark:border-neutral-700 shadow-sm dark:shadow-neutral-900/30 w-full hidden dark:block"
+            />
+            <figcaption className="text-xs text-neutral-400 dark:text-neutral-500 mt-2 text-center">A branch that took in main&apos;s changes and was merged back.</figcaption>
+          </figure>
+          <p className="text-sm text-neutral-700 dark:text-neutral-300 mt-3">
+            The whole example, step by step: <TrackedLink from="guide" to="branches" href="/how-branches-work" className="text-[var(--copper)] hover:underline font-semibold">How branches work &rarr;</TrackedLink>
+          </p>
+        </section>
+
+        <section className="mb-10">
           <H2>Saving &amp; Sharing</H2>
           <UL>
             <li>No account is required. The first save gives you a unique link; bookmark it to come back to the project.</li>
             <li>An account collects all your projects in one dashboard and adds sharing: an edit link for full access and a view-only link.</li>
-            <li>Anyone viewing a shared project can <strong>fork</strong> it into their own editable copy.</li>
+            <li>Anyone viewing a shared project can <strong>fork</strong> it into their own editable copy. A fork keeps following the original and can take in its later changes.</li>
           </UL>
         </section>
 
