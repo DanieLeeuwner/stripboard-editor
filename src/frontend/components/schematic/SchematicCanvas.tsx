@@ -942,10 +942,10 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
   const cursorStyle = panZoom.panning
     ? "grabbing"
     : wireTool
-    ? "crosshair"
-    : isDragging
-    ? "grabbing"
-    : "default";
+      ? "crosshair"
+      : isDragging
+        ? "grabbing"
+        : "default";
 
   const wireStartPos = wireDrawingFrom;
   const selCount = selSize(selection);
@@ -1086,16 +1086,17 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
           );
         })()}
 
-        {/* Components */}
+        {/* Components: symbols only. Labels paint in their own top layer. */}
         {sortedComponents.map((comp) => (
           <SchematicComponentBlock
-            key={comp.id}
+            key={`symbol-${comp.id}`}
             component={comp}
             isSelected={selectedCompSet.has(comp.id)}
             onMouseDown={(e) => handleItemMouseDown("components", comp.id, e)}
             onPinMouseDown={handlePinMouseDown}
             getSVGPoint={getSVGPoint}
             readOnly={readOnly}
+            part="symbol"
           />
         ))}
 
@@ -1138,6 +1139,20 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
             pointerEvents="none"
           />
         )}
+
+        {/* Component names, values and pin names */}
+        {sortedComponents.map((comp) => (
+          <SchematicComponentBlock
+            key={`labels-${comp.id}`}
+            component={comp}
+            isSelected={selectedCompSet.has(comp.id)}
+            onMouseDown={(e) => handleItemMouseDown("components", comp.id, e)}
+            onPinMouseDown={handlePinMouseDown}
+            getSVGPoint={getSVGPoint}
+            readOnly={readOnly}
+            part="labels"
+          />
+        ))}
       </svg>
 
       {/* Selection actions — a single component */}
