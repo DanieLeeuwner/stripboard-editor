@@ -160,6 +160,7 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
   useEffect(() => { wirePreviewRef.current = wirePreview; }, [wirePreview]);
   const [hoverNetId, setHoverNetId] = useState<string | null>(null);
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+  const [editingComponentId, setEditingComponentId] = useState<string | null>(null);
   // Set to the ids about to be excluded when any of them is still placed on the
   // board — the confirm dialog asks before unplacing them.
   const [excludeConfirmIds, setExcludeConfirmIds] = useState<string[] | null>(null);
@@ -1097,6 +1098,7 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
             getSVGPoint={getSVGPoint}
             readOnly={readOnly}
             part="symbol"
+            onEditLabel={() => setEditingComponentId(comp.id)}
           />
         ))}
 
@@ -1111,8 +1113,8 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
               isSelected={selection.labels.includes(label.id)}
               highlighted={!!activeNetId && info?.netId === activeNetId}
               editing={editingLabelId === label.id}
-              onMouseDown={readOnly ? undefined : (e) => handleItemMouseDown("labels", label.id, e)}
-              onDoubleClick={readOnly ? undefined : (e) => { e.stopPropagation(); setEditingLabelId(label.id); }}
+              onMouseDown={readOnly || drawing || wireDrawMode ? undefined : (e) => handleItemMouseDown("labels", label.id, e)}
+              onDoubleClick={readOnly || drawing || wireDrawMode ? undefined : (e) => { e.stopPropagation(); setEditingLabelId(label.id); }}
               onPointMouseDown={readOnly ? undefined : (e) => handleLabelPointMouseDown(label, e)}
               onMouseEnter={readOnly || isDragging || drawing ? undefined : () => setHoverNetId(info?.netId ?? null)}
               onMouseLeave={() => setHoverNetId(null)}
@@ -1140,8 +1142,9 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
           />
         )}
 
-        {/* Component names, values and pin names */}
-        {sortedComponents.map((comp) => (
+        {/* Component names, values and pin names. The order stays fixed while
+            selecting, so a click on a label is not lost to a DOM reorder. */}
+        {components.map((comp) => (
           <SchematicComponentBlock
             key={`labels-${comp.id}`}
             component={comp}
@@ -1151,6 +1154,9 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
             getSVGPoint={getSVGPoint}
             readOnly={readOnly}
             part="labels"
+            editingLabel={editingComponentId === comp.id}
+            onEditLabel={() => setEditingComponentId(comp.id)}
+            onCloseEdit={() => setEditingComponentId((id) => (id === comp.id ? null : id))}
           />
         ))}
       </svg>

@@ -167,6 +167,7 @@ export default function StripboardCanvas({
     componentId: string;
     pinId: string; // "1" for pin1 (boardPos), "2" for pin2 (flexibleEndPos)
   } | null>(null);
+  const [wireDragActive, setWireDragActive] = useState(false);
 
   const rotateComponent = useProjectStore((s) => s.rotateComponent);
   const toggleBoardLock = useProjectStore((s) => s.toggleBoardLock);
@@ -688,6 +689,7 @@ export default function StripboardCanvas({
         grabHole,
         from: wire.from, to: wire.to,
       };
+      setWireDragActive(true);
     },
     [readOnly, board.wires, board.rows, board.cols, boardTool, selection, pressSelect, startGroupDrag, getSVGPoint]
   );
@@ -926,6 +928,7 @@ export default function StripboardCanvas({
     if (wireDragRef.current) {
       if (wireDragRef.current.didDrag) markDragComplete();
       wireDragRef.current = null;
+      setWireDragActive(false);
       return;
     }
     if (cutDragRef.current) {
@@ -1145,6 +1148,7 @@ export default function StripboardCanvas({
             pendingSnapshotRef.current = false;
             wireDragRef.current = null;
             cutDragRef.current = null;
+            setWireDragActive(false);
             rightDownRef.current = null;
             setHover(null);
             setDragging(null);

@@ -7,6 +7,60 @@ import { resolveComponentDef } from "@/utils/resolveComponentDef";
 import SymbolRenderer, { getSymbolBounds, getRotatedPinPositions } from "./SymbolRenderer";
 import { getSymbolDef } from "@/data/symbolDefs";
 
+function ComponentLabelEditor({
+  label,
+  value,
+  allowsValue,
+  onCommit,
+  onCancel,
+}: {
+  label: string;
+  value: string;
+  allowsValue: boolean;
+  onCommit: (label: string, value: string) => void;
+  onCancel: () => void;
+}) {
+  const [nextLabel, setNextLabel] = useState(label);
+  const [nextValue, setNextValue] = useState(value);
+  const commit = () => onCommit(nextLabel, nextValue);
+
+  return (
+    <div
+      className="flex flex-col gap-0.5"
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) commit();
+      }}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      <input
+        autoFocus
+        value={nextLabel}
+        onChange={(e) => setNextLabel(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") onCancel();
+        }}
+        placeholder="Ref"
+        className="w-full bg-white dark:bg-neutral-800 border border-[#113768] dark:border-[#5b9bd5] rounded px-1 text-xs text-center text-neutral-900 dark:text-neutral-100 outline-none"
+      />
+      {allowsValue && (
+        <input
+          value={nextValue}
+          onChange={(e) => setNextValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") onCancel();
+          }}
+          placeholder="Value"
+          className="w-full bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded px-1 text-[10px] text-center text-neutral-700 dark:text-neutral-300 outline-none"
+        />
+      )}
+    </div>
+  );
+}
+
 interface Props {
   component: Component;
   isSelected: boolean;
@@ -14,6 +68,11 @@ interface Props {
   onPinMouseDown?: (componentId: string, pinId: string, e: React.MouseEvent) => void;
   getSVGPoint?: (e: React.MouseEvent) => { x: number; y: number };
   readOnly?: boolean;
+  // The label/value editor is owned by the canvas, so a double click on either
+  // layer (symbol or labels) opens the same editor.
+  editingLabel?: boolean;
+  onEditLabel?: () => void;
+  onCloseEdit?: () => void;
   part?: "all" | "symbol" | "labels";
 }
 
@@ -24,6 +83,9 @@ export default function SchematicComponentBlock({
   onPinMouseDown,
   getSVGPoint,
   readOnly = false,
+  editingLabel = false,
+  onEditLabel,
+  onCloseEdit,
   part = "all",
 }: Props) {
   const componentDefs = useProjectStore((s) => s.componentDefs);
@@ -37,18 +99,20 @@ export default function SchematicComponentBlock({
   const updatePinLabelOffset = useProjectStore((s) => s.updatePinLabelOffset);
   const pushSnapshot = useProjectStore((s) => s.pushSnapshot);
   const wireDrawMode = useProjectStore((s) => s.schematicWireDrawMode);
+  const wireDrawing = useProjectStore((s) => !!s.schematicWireDrawingFrom);
+  // While a wire is being made, labels are part of the wiring surface: they
+  // must not move, open editors or swallow the click meant for the wire.
+  const labelsFrozen = wireDrawMode || wireDrawing;
   const labelsLocked = useProjectStore((s) => s.labelMovement === false);
 
-  const [editingLabel, setEditingLabel] = useState(false);
-  const [editLabelValue, setEditLabelValue] = useState("");
-  const [editValueValue, setEditValueValue] = useState("");
   const [editingPinId, setEditingPinId] = useState<string | null>(null);
   const [editPinValue, setEditPinValue] = useState("");
   const [draggingLabel, setDraggingLabel] = useState(false);
-  const [didDragLabel, setDidDragLabel] = useState(false);
   const pinLabelSnapshotPushed = useRef(false);
   const labelSnapshotPushed = useRef(false);
-  const lockedLabelDown = useRef<{ x: number; y: number } | null>(null);
+  // A press that turns into a drag must not also count as the click that
+  // opens the editor when the pointer is released.
+  const labelMoved = useRef(false);
 
   const def = resolveComponentDef(component, componentDefs);
   if (!def) return null;
@@ -84,29 +148,45 @@ export default function SchematicComponentBlock({
     pinNames[pin.id] = pin.name;
   }
 
-  const handleLabelClick = (e: React.MouseEvent) => {
-    if (readOnly || wireDrawMode || didDragLabel) {
-      setDidDragLabel(false);
-      lockedLabelDown.current = null;
-      return;
-    }
-
-    if (labelsLocked && lockedLabelDown.current) {
-      const dx = e.clientX - lockedLabelDown.current.x;
-      const dy = e.clientY - lockedLabelDown.current.y;
-      lockedLabelDown.current = null;
-      if (Math.sqrt(dx * dx + dy * dy) > 3) return;
-    }
-
+  const handleOpenEditor = (e: React.MouseEvent) => {
+    if (readOnly || labelsFrozen) return;
     e.stopPropagation();
-    setEditLabelValue(component.label);
-    setEditValueValue(component.value ?? "");
-    setEditingLabel(true);
+    if (!editingLabel) onEditLabel?.();
   };
 
-  const commitLabel = () => {
-    const trimmedLabel = editLabelValue.trim();
-    const trimmedValue = editValueValue.trim();
+  const handleLabelClick = (e: React.MouseEvent) => {
+    if (readOnly || labelsFrozen) return;
+    if (labelMoved.current) {
+      labelMoved.current = false;
+      return;
+    }
+    e.stopPropagation();
+    onEditLabel?.();
+  };
+
+  // With locked labels the press reaches the component and starts its drag.
+  // Track the pointer so that a drop does not count as the opening click.
+  const handleLockedLabelMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    labelMoved.current = false;
+    const start = { x: e.clientX, y: e.clientY };
+    const handleMove = (me: MouseEvent) => {
+      if (labelMoved.current) return;
+      const dx = me.clientX - start.x;
+      const dy = me.clientY - start.y;
+      if (Math.sqrt(dx * dx + dy * dy) > 3) labelMoved.current = true;
+    };
+    const handleUp = () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+  };
+
+  const commitLabel = (nextLabel: string, nextValue: string) => {
+    const trimmedLabel = nextLabel.trim();
+    const trimmedValue = nextValue.trim();
     const labelChanged = !!trimmedLabel && trimmedLabel !== component.label;
     const valueChanged = allowsValue && trimmedValue !== (component.value ?? "");
     if (labelChanged || valueChanged) {
@@ -115,25 +195,30 @@ export default function SchematicComponentBlock({
         if (valueChanged) updateComponentValue(component.id, trimmedValue);
       });
     }
-    setEditingLabel(false);
+    onCloseEdit?.();
   };
 
   const handleLabelDragStart = (e: React.MouseEvent) => {
-    if (readOnly || wireDrawMode || editingLabel) return;
+    if (readOnly || labelsFrozen || editingLabel) return;
     e.stopPropagation();
     e.preventDefault();
-    // Defer the snapshot until the label actually moves — a click on the
+    // Defer the snapshot until the label actually moves — a double click on the
     // label (e.g. to rename) must not push a no-op entry / wipe redo.
     labelSnapshotPushed.current = false;
+    labelMoved.current = false;
     setDraggingLabel(true);
-    setDidDragLabel(false);
+
+    const start = getSVGPoint ? getSVGPoint(e) : null;
+    const startOff = { x: labelOff.x, y: labelOff.y };
 
     const handleMove = (me: MouseEvent) => {
-      setDidDragLabel(true);
-      if (!getSVGPoint) return;
+      labelMoved.current = true;
+      if (!getSVGPoint || !start) return;
       const svgPt = getSVGPoint(me as unknown as React.MouseEvent);
-      const newOffX = svgPt.x - component.schematicPos.x - defaultLabelX;
-      const newOffY = svgPt.y - component.schematicPos.y - defaultLabelY;
+      // Move by the pointer's travel, not to its position: the label keeps
+      // the same point under the cursor instead of centring on it.
+      const newOffX = startOff.x + (svgPt.x - start.x);
+      const newOffY = startOff.y + (svgPt.y - start.y);
       if (!labelSnapshotPushed.current) {
         pushSnapshot();
         labelSnapshotPushed.current = true;
@@ -142,8 +227,8 @@ export default function SchematicComponentBlock({
     };
 
     const handleUp = () => {
-      setDraggingLabel(false);
       labelSnapshotPushed.current = false;
+      setDraggingLabel(false);
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
@@ -153,7 +238,7 @@ export default function SchematicComponentBlock({
   };
 
   const handlePinLabelClick = (pinId: string, e: React.MouseEvent) => {
-    if (readOnly || wireDrawMode) return;
+    if (readOnly || labelsFrozen) return;
     e.stopPropagation();
     setEditPinValue(pinNames[pinId] ?? pinId);
     setEditingPinId(pinId);
@@ -178,6 +263,7 @@ export default function SchematicComponentBlock({
       transform={`translate(${component.schematicPos.x}, ${component.schematicPos.y})`}
       style={{ cursor: "grab", opacity: component.boardExcluded ? 0.45 : 1 }}
       onMouseDown={onMouseDown}
+      onDoubleClick={handleOpenEditor}
     >
       {showSymbol && (
         <SymbolRenderer
@@ -190,6 +276,7 @@ export default function SchematicComponentBlock({
           pinNames={pinNames}
           pinLabelOffsets={component.pinLabelOffsets ?? {}}
           labelsLocked={labelsLocked}
+          labelsFrozen={labelsFrozen}
           showPinLabels={false}
         />
       )}
@@ -222,9 +309,14 @@ export default function SchematicComponentBlock({
               strokeLinejoin="round"
               style={{ cursor: "grab", userSelect: "none", paintOrder: "stroke" }}
               onClick={handleLabelClick}
-              onMouseDown={labelsLocked
-                ? (e) => { lockedLabelDown.current = { x: e.clientX, y: e.clientY }; }
-                : handleLabelDragStart}
+              onMouseDown={(e) => {
+                if (labelsFrozen) {
+                  if (e.button === 0) e.stopPropagation();
+                  return;
+                }
+                if (labelsLocked) handleLockedLabelMouseDown(e);
+                else handleLabelDragStart(e);
+              }}
             >
               <tspan x={labelX}>{component.label}</tspan>
               {allowsValue && component.value && (
@@ -259,6 +351,7 @@ export default function SchematicComponentBlock({
             }}
             onPinLabelDragEnd={readOnly ? undefined : () => { pinLabelSnapshotPushed.current = false; }}
             labelsLocked={labelsLocked}
+            labelsFrozen={labelsFrozen}
             labelsOnly
             showPinLabels={!editingPinId}
           />
@@ -271,38 +364,13 @@ export default function SchematicComponentBlock({
               width={110}
               height={46}
             >
-              <div
-                className="flex flex-col gap-0.5"
-                onBlur={(e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) commitLabel();
-                }}
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <input
-                  autoFocus
-                  value={editLabelValue}
-                  onChange={(e) => setEditLabelValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitLabel();
-                    if (e.key === "Escape") setEditingLabel(false);
-                  }}
-                  placeholder="Ref"
-                  className="w-full bg-white dark:bg-neutral-800 border border-[#113768] dark:border-[#5b9bd5] rounded px-1 text-xs text-center text-neutral-900 dark:text-neutral-100 outline-none"
-                />
-                {allowsValue && (
-                  <input
-                    value={editValueValue}
-                    onChange={(e) => setEditValueValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") commitLabel();
-                      if (e.key === "Escape") setEditingLabel(false);
-                    }}
-                    placeholder="Value"
-                    className="w-full bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded px-1 text-[10px] text-center text-neutral-700 dark:text-neutral-300 outline-none"
-                  />
-                )}
-              </div>
+              <ComponentLabelEditor
+                label={component.label}
+                value={component.value ?? ""}
+                allowsValue={allowsValue}
+                onCommit={commitLabel}
+                onCancel={() => onCloseEdit?.()}
+              />
             </foreignObject>
           )}
 

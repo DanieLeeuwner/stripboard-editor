@@ -46,6 +46,7 @@ export default function PlacedComponent({ component, isSelected, clashing = fals
   // the label's drawn width, so the lock sits right after it
   const labelRef = useRef<SVGTSpanElement>(null);
   const [labelW, setLabelW] = useState(0);
+  const [draggingLabel, setDraggingLabel] = useState(false);
   const locked = !!component.locked;
   useLayoutEffect(() => {
     if (locked && labelRef.current) setLabelW(labelRef.current.getComputedTextLength());
@@ -62,6 +63,7 @@ export default function PlacedComponent({ component, isSelected, clashing = fals
     if (readOnly || e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
+    setDraggingLabel(true);
     const startX = e.clientX;
     const startY = e.clientY;
     const startOff = component.boardLabelOffset ?? { x: 0, y: 0 };
@@ -83,6 +85,7 @@ export default function PlacedComponent({ component, isSelected, clashing = fals
     const handleUp = () => {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
+      setDraggingLabel(false);
       if (snapshotPushed.current) {
         suppressNextCanvasClick = true;
         requestAnimationFrame(() => { suppressNextCanvasClick = false; });

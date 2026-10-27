@@ -16,6 +16,7 @@ interface SymbolRendererProps {
   onPinLabelDrag?: (pinId: string, offset: { x: number; y: number }) => void;
   onPinLabelDragEnd?: () => void;
   labelsLocked?: boolean;
+  labelsFrozen?: boolean;
   labelsOnly?: boolean;
   showPinLabels?: boolean;
   scale?: number;
@@ -120,7 +121,7 @@ function getPinLabelProps(
 }
 
 let _suppressPinLabelClick = false;
-let _pinLabelDown: { x: number; y: number } | null = null;
+let _pinLabelMoved = false;
 
 export default function SymbolRenderer({
   symbolId,
@@ -135,10 +136,12 @@ export default function SymbolRenderer({
   onPinLabelDrag,
   onPinLabelDragEnd,
   labelsLocked = false,
+  labelsFrozen = false,
   labelsOnly = false,
   showPinLabels = true,
   scale = 1,
 }: SymbolRendererProps) {
+  const [draggingPin, setDraggingPin] = React.useState(false);
   const def = getSymbolDef(symbolId);
   if (!def) return null;
 
@@ -223,21 +226,23 @@ export default function SymbolRenderer({
                   fill={hasNet ? color : "var(--hole-fill)"}
                   stroke={hasNet ? color : "var(--pin-text)"}
                   strokeWidth={1.5}
-                  style={{ cursor: onPinMouseDown ? "pointer" : "default" }}
+                  style={{ cursor: onPinMouseDown ? "crosshair" : "default" }}
                   onMouseDown={(e) => {
                     e.stopPropagation();
                     onPinMouseDown?.(pin.pinId, e);
                   }}
+                  onDoubleClick={(e) => e.stopPropagation()}
                 />
                 {/* Hit area: small enough that a one-grid wire between two pins stays clickable */}
                 <circle
                   cx={rEnd.x} cy={rEnd.y}
                   r={5} fill="transparent"
-                  style={{ cursor: onPinMouseDown ? "pointer" : "default" }}
+                  style={{ cursor: onPinMouseDown ? "crosshair" : "default" }}
                   onMouseDown={(e) => {
                     e.stopPropagation();
                     onPinMouseDown?.(pin.pinId, e);
                   }}
+                  onDoubleClick={(e) => e.stopPropagation()}
                 />
               </>
             )}
@@ -260,13 +265,17 @@ export default function SymbolRenderer({
                   style={{
                     userSelect: "none",
                     paintOrder: "stroke",
-                    cursor: onPinLabelDrag || labelsLocked ? "grab" : onPinLabelClick ? "text" : "default",
+                    cursor: labelsFrozen ? "default" : draggingPin ? "grabbing" : onPinLabelDrag || labelsLocked ? "grab" : onPinLabelClick ? "text" : "default",
                   }}
                   onClick={(e) => {
+                    if (labelsFrozen) {
+                      e.stopPropagation();
+                      return;
+                    }
                     if (labelsLocked) {
-                      const down = _pinLabelDown;
-                      _pinLabelDown = null;
-                      if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 3) return;
+                      const moved = _pinLabelMoved;
+                      _pinLabelMoved = false;
+                      if (moved) return;
                     }
                     if (_suppressPinLabelClick) {
                       _suppressPinLabelClick = false;
@@ -277,17 +286,37 @@ export default function SymbolRenderer({
                       onPinLabelClick(pin.pinId, e);
                     }
                   }}
+                  onDoubleClick={(e) => e.stopPropagation()}
                   onMouseDown={(e) => {
+                    // A wire is being made: labels stay out of the way.
+                    if (labelsFrozen) {
+                      if (e.button === 0) e.stopPropagation();
+                      return;
+                    }
                     // Locked: let the mousedown through to the component, which
                     // starts a drag of the part rather than of the label.
                     if (labelsLocked) {
-                      _pinLabelDown = { x: e.clientX, y: e.clientY };
+                      const start = { x: e.clientX, y: e.clientY };
+                      _pinLabelMoved = false;
+                      const handleMove = (me: MouseEvent) => {
+                        if (_pinLabelMoved) return;
+                        const dx = me.clientX - start.x;
+                        const dy = me.clientY - start.y;
+                        if (Math.sqrt(dx * dx + dy * dy) > 3) _pinLabelMoved = true;
+                      };
+                      const handleUp = () => {
+                        window.removeEventListener("mousemove", handleMove);
+                        window.removeEventListener("mouseup", handleUp);
+                      };
+                      window.addEventListener("mousemove", handleMove);
+                      window.addEventListener("mouseup", handleUp);
                       return;
                     }
                     if (onPinLabelClick) e.stopPropagation();
                     if (onPinLabelDrag) {
                       e.stopPropagation();
                       e.preventDefault();
+                      setDraggingPin(true);
                       const startX = e.clientX;
                       const startY = e.clientY;
                       const startOff = pinOff ?? { x: 0, y: 0 };
@@ -309,6 +338,7 @@ export default function SymbolRenderer({
                       const handleUp = () => {
                         window.removeEventListener("mousemove", handleMove);
                         window.removeEventListener("mouseup", handleUp);
+                        setDraggingPin(false);
                         if (didMove) {
                           _suppressPinLabelClick = true;
                           if (onPinLabelDragEnd) onPinLabelDragEnd();
