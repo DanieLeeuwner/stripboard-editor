@@ -118,6 +118,12 @@ select {
   cursor: grabbing !important;
 }
 
+/* While a cut is being dragged, every part of the canvas shows the move cursor. */
+.move-cursor,
+.move-cursor *:not(input):not(textarea) {
+  cursor: move !important;
+}
+
 @media print {
   /* margin 0 removes the browser's header/footer (page title, URL, date,
      page numbers); the 10mm content inset comes from each page's padding.

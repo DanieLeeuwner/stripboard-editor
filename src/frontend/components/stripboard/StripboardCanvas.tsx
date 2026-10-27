@@ -168,6 +168,7 @@ export default function StripboardCanvas({
     pinId: string; // "1" for pin1 (boardPos), "2" for pin2 (flexibleEndPos)
   } | null>(null);
   const [wireDragActive, setWireDragActive] = useState(false);
+  const [cutDragActive, setCutDragActive] = useState(false);
 
   const rotateComponent = useProjectStore((s) => s.rotateComponent);
   const toggleBoardLock = useProjectStore((s) => s.toggleBoardLock);
@@ -716,6 +717,7 @@ export default function StripboardCanvas({
         grabHole,
         origin: cut, at: cut,
       };
+      setCutDragActive(true);
     },
     [readOnly, board.rows, board.cols, pressSelect, startGroupDrag, getSVGPoint]
   );
@@ -934,6 +936,7 @@ export default function StripboardCanvas({
     if (cutDragRef.current) {
       if (cutDragRef.current.didDrag) markDragComplete();
       cutDragRef.current = null;
+      setCutDragActive(false);
       return;
     }
 
@@ -1130,7 +1133,7 @@ export default function StripboardCanvas({
           width="100%"
           height="100%"
           viewBox={panZoom.getViewBox(containerSize.width, containerSize.height)}
-          className={`font-sans bg-white dark:bg-[#1e1e1e]${cursorStyle === "grabbing" ? " grabbing-cursor" : ""}`}
+          className={`font-sans bg-white dark:bg-[#1e1e1e]${cutDragActive ? " move-cursor" : ""}${cursorStyle === "grabbing" && !cutDragActive ? " grabbing-cursor" : ""}`}
           style={{ cursor: cursorStyle }}
           onMouseDown={(e) => {
             if (e.button === 2) rightDownRef.current = { x: e.clientX, y: e.clientY };
@@ -1149,6 +1152,7 @@ export default function StripboardCanvas({
             wireDragRef.current = null;
             cutDragRef.current = null;
             setWireDragActive(false);
+            setCutDragActive(false);
             rightDownRef.current = null;
             setHover(null);
             setDragging(null);
