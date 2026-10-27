@@ -6,11 +6,12 @@ import { useLibraryStore } from "@/store/useLibraryStore";
 import { Component, NetLabel, NetLabelKind, SchematicWire } from "@/types";
 import { resolveComponentDef } from "@/utils/resolveComponentDef";
 import { usePanZoom } from "@/hooks/usePanZoom";
-import SchematicComponentBlock from "./SchematicComponentBlock";
+import SchematicComponentBlock, { ComponentLabelEditor } from "./SchematicComponentBlock";
 import SchematicWireLine from "./SchematicWireLine";
 import SchematicNetLabel, { netLabelBounds } from "./SchematicNetLabel";
 import { UnionFind } from "./netInference";
-import { getSymbolBounds } from "./SymbolRenderer";
+import { getSymbolBounds, getPinLabelProps } from "./SymbolRenderer";
+import { getSymbolDef } from "@/data/symbolDefs";
 import { findFreeSpot, partBox, pointInRect, schematicPinPoints, wireInRect, type Box } from "./schematicGeometry";
 import { registerLibraryPlacer, type LibraryItem } from "./libraryPlacement";
 import { GRID_SIZE, snapToGrid, pointKey } from "@/utils/schematicConstants";
@@ -103,6 +104,32 @@ function selModeFromEvent(e: { ctrlKey: boolean; metaKey: boolean; shiftKey: boo
   return "replace";
 }
 
+/** Single-line editor for a pin name, sharing the value editor's top layer. */
+function PinNameEditor({ name, onCommit, onCancel }: {
+  name: string;
+  onCommit: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(name);
+  const commit = () => onCommit(value);
+  return (
+    <input
+      autoFocus
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+        if (e.key === "Escape") onCancel();
+      }}
+      placeholder="Pin name"
+      className="w-full bg-white dark:bg-neutral-800 border border-[#113768] dark:border-[#5b9bd5] rounded px-1 text-xs text-center text-neutral-900 dark:text-neutral-100 outline-none"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    />
+  );
+}
+
 interface Clipboard {
   components: Omit<Component, "id" | "label" | "boardPos" | "rotation" | "flexibleEndPos" | "locked">[];
   wires: Omit<SchematicWire, "id">[];
@@ -123,6 +150,9 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
   const nets = useProjectStore((s) => s.nets);
   const netAssignments = useProjectStore((s) => s.netAssignments);
   const removeComponent = useProjectStore((s) => s.removeComponent);
+  const updateLabel = useProjectStore((s) => s.updateLabel);
+  const updateComponentValue = useProjectStore((s) => s.updateComponentValue);
+  const updatePinName = useProjectStore((s) => s.updatePinName);
   const addComponent = useProjectStore((s) => s.addComponent);
   const addLibraryComponent = useProjectStore((s) => s.addLibraryComponent);
   const addSchematicWire = useProjectStore((s) => s.addSchematicWire);
@@ -161,6 +191,7 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
   const [hoverNetId, setHoverNetId] = useState<string | null>(null);
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
   const [editingComponentId, setEditingComponentId] = useState<string | null>(null);
+  const [editingPin, setEditingPin] = useState<{ componentId: string; pinId: string } | null>(null);
   // Set to the ids about to be excluded when any of them is still placed on the
   // board — the confirm dialog asks before unplacing them.
   const [excludeConfirmIds, setExcludeConfirmIds] = useState<string[] | null>(null);
@@ -686,6 +717,33 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
     setIsDragging(true);
   }, [readOnly, wireTool, endArrowSession, selection, applySelection, beginSchematicMove, getSVGPoint]);
 
+  const commitComponentLabel = useCallback((id: string, nextLabel: string, nextValue: string) => {
+    const comp = components.find((c) => c.id === id);
+    const def = comp ? resolveComponentDef(comp, componentDefs) : undefined;
+    const allowsValue = def?.hasValue ?? false;
+    const trimmedLabel = nextLabel.trim();
+    const trimmedValue = nextValue.trim();
+    const labelChanged = !!trimmedLabel && trimmedLabel !== comp?.label;
+    const valueChanged = allowsValue && trimmedValue !== (comp?.value ?? "");
+    if (labelChanged || valueChanged) {
+      transact(() => {
+        if (labelChanged) updateLabel(id, trimmedLabel);
+        if (valueChanged) updateComponentValue(id, trimmedValue);
+      });
+    }
+    setEditingComponentId(null);
+  }, [components, componentDefs, transact, updateLabel, updateComponentValue]);
+
+  const commitPinName = useCallback((pinId: string, nextName: string) => {
+    if (!editingPin) return;
+    const comp = components.find((c) => c.id === editingPin.componentId);
+    const def = comp ? resolveComponentDef(comp, componentDefs) : undefined;
+    const current = def?.pins.find((p) => p.id === pinId)?.name;
+    const trimmed = nextName.trim();
+    if (trimmed && trimmed !== current) updatePinName(editingPin.componentId, pinId, trimmed);
+    setEditingPin(null);
+  }, [editingPin, components, componentDefs, updatePinName]);
+
   /** Mousedown on a pin end: start or finish a wire (any mode) */
   const handlePinMouseDown = useCallback((componentId: string, pinId: string, e: React.MouseEvent) => {
     if (readOnly || e.button === 2) return;
@@ -967,6 +1025,69 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
   const wireStartPos = wireDrawingFrom;
   const selCount = selSize(selection);
 
+  // The label/value editor is an HTML overlay, not a foreignObject: browsers
+  // clip foreignObject content differently. It is scaled by the canvas zoom so
+  // it keeps the same size relation to the drawing it edits.
+  const EDITOR_W = 110;
+  const EDITOR_H = 46;
+  const editingComponent = editingComponentId
+    ? components.find((c) => c.id === editingComponentId) ?? null
+    : null;
+  const editingDef = editingComponent ? resolveComponentDef(editingComponent, componentDefs) : undefined;
+  let editorPos: { left: number; top: number } | null = null;
+  if (editingComponent && editingDef) {
+    const b = getSymbolBounds(editingDef.symbol, editingComponent.schematicRotation ?? 0, editingComponent.schematicMirrored ?? false);
+    const labelYOffset = getSymbolDef(editingDef.symbol)?.labelYOffset ?? 0;
+    const wx = editingComponent.schematicPos.x + (b.minX + b.maxX) / 2 + (editingComponent.labelOffset?.x ?? 0);
+    const wy = editingComponent.schematicPos.y + b.minY - 6 - labelYOffset + (editingComponent.labelOffset?.y ?? 0);
+    const sx = (wx - panZoom.panX) * panZoom.zoom;
+    const sy = (wy - panZoom.panY) * panZoom.zoom;
+    const w = EDITOR_W * panZoom.zoom;
+    const h = EDITOR_H * panZoom.zoom;
+    const margin = 8;
+    editorPos = {
+      left: Math.max(margin, Math.min(sx - w / 2, containerSize.width - w - margin)),
+      top: Math.max(margin, Math.min(sy - 16 * panZoom.zoom, containerSize.height - h - margin)),
+    };
+  }
+
+  const editingPinComponent = editingPin ? components.find((c) => c.id === editingPin.componentId) ?? null : null;
+  const editingPinDef = editingPinComponent ? resolveComponentDef(editingPinComponent, componentDefs) : undefined;
+  let pinEditorPos: { left: number; top: number } | null = null;
+  let editingPinName = "";
+  if (editingPin && editingPinComponent && editingPinDef) {
+    const symbolDef = getSymbolDef(editingPinDef.symbol);
+    const symbolPin = symbolDef?.pins.find((p) => p.pinId === editingPin.pinId);
+    const pinName = editingPinDef.pins.find((p) => p.id === editingPin.pinId)?.name ?? editingPin.pinId;
+    editingPinName = pinName;
+    if (symbolDef && symbolPin) {
+      const lp = getPinLabelProps(
+        symbolPin.labelPos ?? symbolPin.stubEnd,
+        symbolPin.side,
+        editingPinComponent.schematicRotation ?? 0,
+        editingPinComponent.schematicMirrored ?? false,
+        symbolDef.pinLabelOffset,
+      );
+      const off = editingPinComponent.pinLabelOffsets?.[editingPin.pinId];
+      // getPinLabelProps returns the text anchor, not the text's centre: shift
+      // by half its drawn width/height so the input sits over the label itself.
+      const textW = pinName.length * 5.2;
+      const cx = lp.anchor === "start" ? lp.x + textW / 2 : lp.anchor === "end" ? lp.x - textW / 2 : lp.x;
+      const cy = lp.baseline === "hanging" ? lp.y + 5 : lp.baseline === "auto" ? lp.y - 4 : lp.y;
+      const wx = editingPinComponent.schematicPos.x + cx + (off?.x ?? 0);
+      const wy = editingPinComponent.schematicPos.y + cy + (off?.y ?? 0);
+      const sx = (wx - panZoom.panX) * panZoom.zoom;
+      const sy = (wy - panZoom.panY) * panZoom.zoom;
+      const w = EDITOR_W * panZoom.zoom;
+      const h = 24 * panZoom.zoom;
+      const margin = 8;
+      pinEditorPos = {
+        left: Math.max(margin, Math.min(sx - w / 2, containerSize.width - w - margin)),
+        top: Math.max(margin, Math.min(sy - h / 2, containerSize.height - h - margin)),
+      };
+    }
+  }
+
   return (
     <div ref={containerRef} className="h-full w-full overflow-hidden relative select-none">
       <svg
@@ -1171,11 +1292,52 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
             readOnly={readOnly}
             part="labels"
             editingLabel={editingComponentId === comp.id}
-            onEditLabel={() => setEditingComponentId(comp.id)}
-            onCloseEdit={() => setEditingComponentId((id) => (id === comp.id ? null : id))}
+            onEditLabel={() => { setEditingPin(null); setEditingComponentId(comp.id); }}
+            editingPinId={editingPin?.componentId === comp.id ? editingPin.pinId : null}
+            onPinEditStart={(pinId) => { setEditingComponentId(null); setEditingPin({ componentId: comp.id, pinId }); }}
           />
         ))}
       </svg>
+
+      {editingComponent && editingDef && editorPos && (
+        <div
+          className="absolute z-30"
+          style={{
+            left: editorPos.left,
+            top: editorPos.top,
+            width: EDITOR_W,
+            transform: `scale(${panZoom.zoom})`,
+            transformOrigin: "top left",
+          }}
+        >
+          <ComponentLabelEditor
+            label={editingComponent.label}
+            value={editingComponent.value ?? ""}
+            allowsValue={editingDef.hasValue ?? false}
+            onCommit={(label, value) => commitComponentLabel(editingComponent.id, label, value)}
+            onCancel={() => setEditingComponentId(null)}
+          />
+        </div>
+      )}
+
+      {editingPin && editingPinComponent && editingPinDef && pinEditorPos && (
+        <div
+          className="absolute z-30"
+          style={{
+            left: pinEditorPos.left,
+            top: pinEditorPos.top,
+            width: EDITOR_W,
+            transform: `scale(${panZoom.zoom})`,
+            transformOrigin: "top left",
+          }}
+        >
+          <PinNameEditor
+            name={editingPinName}
+            onCommit={(name) => commitPinName(editingPin.pinId, name)}
+            onCancel={() => setEditingPin(null)}
+          />
+        </div>
+      )}
 
       {/* Selection actions — a single component */}
       {!readOnly && singleComponentId && (

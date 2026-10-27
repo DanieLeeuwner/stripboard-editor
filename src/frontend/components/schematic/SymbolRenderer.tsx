@@ -17,6 +17,8 @@ interface SymbolRendererProps {
   onPinLabelDragEnd?: () => void;
   labelsLocked?: boolean;
   labelsFrozen?: boolean;
+  // A pin name being edited: its input sits on top of it, so hide just that one.
+  hiddenPinId?: string | null;
   labelsOnly?: boolean;
   showPinLabels?: boolean;
   scale?: number;
@@ -86,7 +88,7 @@ export function getSymbolBounds(symbolId: string, rotation: 0 | 90 | 180 | 270 =
 }
 
 /** Compute pin label position and anchor dynamically based on stub direction, rotation, and mirror */
-function getPinLabelProps(
+export function getPinLabelProps(
   attachPoint: { x: number; y: number },
   side: "top" | "bottom" | "left" | "right",
   rotation: 0 | 90 | 180 | 270,
@@ -137,6 +139,7 @@ export default function SymbolRenderer({
   onPinLabelDragEnd,
   labelsLocked = false,
   labelsFrozen = false,
+  hiddenPinId = null,
   labelsOnly = false,
   showPinLabels = true,
   scale = 1,
@@ -247,7 +250,7 @@ export default function SymbolRenderer({
               </>
             )}
             {/* Pin label — dynamically positioned based on stub direction */}
-            {showPinLabels && !def.hidePinLabels && (() => {
+            {showPinLabels && !def.hidePinLabels && pin.pinId !== hiddenPinId && (() => {
               const lp = getPinLabelProps(pin.labelPos ?? pin.stubEnd, pin.side, rotation, mirrored, def.pinLabelOffset);
               const pinOff = pinLabelOffsets[pin.pinId];
               const lx = lp.x + (pinOff?.x ?? 0);

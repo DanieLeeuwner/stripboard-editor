@@ -4,10 +4,10 @@ import { useState, useRef } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { Component } from "@/types";
 import { resolveComponentDef } from "@/utils/resolveComponentDef";
-import SymbolRenderer, { getSymbolBounds, getRotatedPinPositions } from "./SymbolRenderer";
+import SymbolRenderer, { getSymbolBounds } from "./SymbolRenderer";
 import { getSymbolDef } from "@/data/symbolDefs";
 
-function ComponentLabelEditor({
+export function ComponentLabelEditor({
   label,
   value,
   allowsValue,
@@ -72,7 +72,10 @@ interface Props {
   // layer (symbol or labels) opens the same editor.
   editingLabel?: boolean;
   onEditLabel?: () => void;
-  onCloseEdit?: () => void;
+  // Pin name editing is also owned by the canvas, so its editor shares the
+  // top layer with the value editor.
+  editingPinId?: string | null;
+  onPinEditStart?: (pinId: string) => void;
   part?: "all" | "symbol" | "labels";
 }
 
@@ -85,16 +88,13 @@ export default function SchematicComponentBlock({
   readOnly = false,
   editingLabel = false,
   onEditLabel,
-  onCloseEdit,
+  editingPinId = null,
+  onPinEditStart,
   part = "all",
 }: Props) {
   const componentDefs = useProjectStore((s) => s.componentDefs);
   const netAssignments = useProjectStore((s) => s.netAssignments);
   const nets = useProjectStore((s) => s.nets);
-  const updateLabel = useProjectStore((s) => s.updateLabel);
-  const updateComponentValue = useProjectStore((s) => s.updateComponentValue);
-  const transact = useProjectStore((s) => s.transact);
-  const updatePinName = useProjectStore((s) => s.updatePinName);
   const updateLabelOffset = useProjectStore((s) => s.updateLabelOffset);
   const updatePinLabelOffset = useProjectStore((s) => s.updatePinLabelOffset);
   const pushSnapshot = useProjectStore((s) => s.pushSnapshot);
@@ -105,8 +105,6 @@ export default function SchematicComponentBlock({
   const labelsFrozen = wireDrawMode || wireDrawing;
   const labelsLocked = useProjectStore((s) => s.labelMovement === false);
 
-  const [editingPinId, setEditingPinId] = useState<string | null>(null);
-  const [editPinValue, setEditPinValue] = useState("");
   const [draggingLabel, setDraggingLabel] = useState(false);
   const pinLabelSnapshotPushed = useRef(false);
   const labelSnapshotPushed = useRef(false);
@@ -117,8 +115,8 @@ export default function SchematicComponentBlock({
   const def = resolveComponentDef(component, componentDefs);
   if (!def) return null;
   const allowsValue = def.hasValue ?? false;
-  const showSymbol = part !== "labels";
-  const showLabels = part !== "symbol";
+  const showSymbol = part === "all" || part === "symbol";
+  const showLabels = part === "all" || part === "labels";
 
   const rotation = component.schematicRotation ?? 0;
   const mirrored = component.schematicMirrored ?? false;
@@ -184,20 +182,6 @@ export default function SchematicComponentBlock({
     window.addEventListener("mouseup", handleUp);
   };
 
-  const commitLabel = (nextLabel: string, nextValue: string) => {
-    const trimmedLabel = nextLabel.trim();
-    const trimmedValue = nextValue.trim();
-    const labelChanged = !!trimmedLabel && trimmedLabel !== component.label;
-    const valueChanged = allowsValue && trimmedValue !== (component.value ?? "");
-    if (labelChanged || valueChanged) {
-      transact(() => {
-        if (labelChanged) updateLabel(component.id, trimmedLabel);
-        if (valueChanged) updateComponentValue(component.id, trimmedValue);
-      });
-    }
-    onCloseEdit?.();
-  };
-
   const handleLabelDragStart = (e: React.MouseEvent) => {
     if (readOnly || labelsFrozen || editingLabel) return;
     e.stopPropagation();
@@ -240,18 +224,7 @@ export default function SchematicComponentBlock({
   const handlePinLabelClick = (pinId: string, e: React.MouseEvent) => {
     if (readOnly || labelsFrozen) return;
     e.stopPropagation();
-    setEditPinValue(pinNames[pinId] ?? pinId);
-    setEditingPinId(pinId);
-  };
-
-  const commitPinName = () => {
-    if (editingPinId) {
-      const trimmed = editPinValue.trim();
-      if (trimmed && trimmed !== pinNames[editingPinId]) {
-        updatePinName(component.id, editingPinId, trimmed);
-      }
-      setEditingPinId(null);
-    }
+    onPinEditStart?.(pinId);
   };
 
   const handlePinMouseDown = (pinId: string, e: React.MouseEvent) => {
@@ -339,7 +312,7 @@ export default function SchematicComponentBlock({
             rotation={rotation}
             mirrored={mirrored}
             selected={isSelected}
-            onPinLabelClick={readOnly || editingPinId ? undefined : handlePinLabelClick}
+            onPinLabelClick={readOnly ? undefined : handlePinLabelClick}
             pinNames={pinNames}
             pinLabelOffsets={component.pinLabelOffsets ?? {}}
             onPinLabelDrag={readOnly ? undefined : (pinId, offset) => {
@@ -352,56 +325,10 @@ export default function SchematicComponentBlock({
             onPinLabelDragEnd={readOnly ? undefined : () => { pinLabelSnapshotPushed.current = false; }}
             labelsLocked={labelsLocked}
             labelsFrozen={labelsFrozen}
+            hiddenPinId={editingPinId}
             labelsOnly
-            showPinLabels={!editingPinId}
+            showPinLabels
           />
-
-          {/* Editing overlays render after the labels so they stay on top. */}
-          {editingLabel && (
-            <foreignObject
-              x={labelX - 55}
-              y={labelY - 16}
-              width={110}
-              height={46}
-            >
-              <ComponentLabelEditor
-                label={component.label}
-                value={component.value ?? ""}
-                allowsValue={allowsValue}
-                onCommit={commitLabel}
-                onCancel={() => onCloseEdit?.()}
-              />
-            </foreignObject>
-          )}
-
-          {/* Inline pin name editing overlay */}
-          {editingPinId && (() => {
-            const pinPositions = getRotatedPinPositions(def.symbol, rotation, mirrored);
-            const pinPos = pinPositions.find((p) => p.pinId === editingPinId);
-            if (!pinPos) return null;
-            return (
-              <foreignObject
-                x={pinPos.x - 30}
-                y={pinPos.y - 10}
-                width={60}
-                height={20}
-              >
-                <input
-                  autoFocus
-                  value={editPinValue}
-                  onChange={(e) => setEditPinValue(e.target.value)}
-                  onBlur={commitPinName}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitPinName();
-                    if (e.key === "Escape") setEditingPinId(null);
-                  }}
-                  className="w-full bg-white dark:bg-neutral-800 border border-[#113768] dark:border-[#5b9bd5] rounded px-1 text-[9px] text-center text-neutral-900 dark:text-neutral-100 outline-none"
-                  onClick={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
-                />
-              </foreignObject>
-            );
-          })()}
         </>
       )}
     </g>
