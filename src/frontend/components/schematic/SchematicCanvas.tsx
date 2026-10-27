@@ -179,6 +179,8 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
     sel: Selection;
   } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  // A second press on the same part, near the first opens the value editor
+  const lastComponentPressRef = useRef<{ id: string; at: number; x: number; y: number } | null>(null);
 
   // Arrow-key nudging: one gesture per run of presses. Bindings and the undo
   // snapshot are taken on the first press; the run ends (and connectivity
@@ -651,6 +653,19 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
     setEditingLabelId(null);
 
     const mode = selModeFromEvent(e);
+    if (kind === "components" && mode === "replace") {
+      const now = Date.now();
+      const prev = lastComponentPressRef.current;
+      const near = prev && prev.id === id
+        && now - prev.at < 350
+        && Math.hypot(e.clientX - prev.x, e.clientY - prev.y) <= 4;
+      if (near) {
+        lastComponentPressRef.current = null;
+        setEditingComponentId(id);
+      } else {
+        lastComponentPressRef.current = { id, at: now, x: e.clientX, y: e.clientY };
+      }
+    }
     if (mode === "toggle") {
       applySelection(selWith(selection, kind, id, "toggle"));
       return;
@@ -721,6 +736,7 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
     const target = e.target as Element;
     const isBackground = target.tagName === "svg" || target.getAttribute("fill") === "url(#grid)";
     if (!isBackground) return;
+    lastComponentPressRef.current = null;
     setEditingLabelId(null);
 
     const pt = getSVGPoint(e);
