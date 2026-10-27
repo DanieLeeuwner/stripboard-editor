@@ -307,7 +307,7 @@ export default function SchematicComponentBlock({
               stroke="var(--schematic-bg)"
               strokeWidth={3}
               strokeLinejoin="round"
-              style={{ cursor: "grab", userSelect: "none", paintOrder: "stroke" }}
+              style={{ cursor: draggingLabel ? "grabbing" : "grab", userSelect: "none", paintOrder: "stroke" }}
               onClick={handleLabelClick}
               onMouseDown={(e) => {
                 if (labelsFrozen) {

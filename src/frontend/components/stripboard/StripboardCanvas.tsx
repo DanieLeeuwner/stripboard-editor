@@ -1110,7 +1110,7 @@ export default function StripboardCanvas({
     : wireEndBlocked(hover));
   const cursorStyle = panZoom.panning
     ? "grabbing"
-    : dragging?.didDrag
+    : dragging?.didDrag || flexPinDrag || wireDragActive
     ? "grabbing"
     : boardTool === "select"
     ? "default"
@@ -1130,7 +1130,7 @@ export default function StripboardCanvas({
           width="100%"
           height="100%"
           viewBox={panZoom.getViewBox(containerSize.width, containerSize.height)}
-          className="font-sans bg-white dark:bg-[#1e1e1e]"
+          className={`font-sans bg-white dark:bg-[#1e1e1e]${cursorStyle === "grabbing" ? " grabbing-cursor" : ""}`}
           style={{ cursor: cursorStyle }}
           onMouseDown={(e) => {
             if (e.button === 2) rightDownRef.current = { x: e.clientX, y: e.clientY };

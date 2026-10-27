@@ -188,7 +188,7 @@ export default function PlacedComponent({ component, isSelected, clashing = fals
         y={ly}
         textAnchor="middle" fontSize={11} fontWeight={600}
         {...(label.onBody ? onBody : { fill: "var(--component-text)" })}
-        style={{ cursor: "grab" }}
+        style={{ cursor: draggingLabel ? "grabbing" : "grab" }}
         onMouseDown={(e) => handleLabelMouseDown(e, label.x, label.y)}
       >
         <tspan ref={labelRef} x={lx}>

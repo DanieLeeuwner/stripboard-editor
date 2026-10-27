@@ -104,6 +104,20 @@ select {
   animation: progress-sheen 1.4s linear infinite;
 }
 
+/* While a wire is being created, every part of the canvas shows the crosshair,
+   overriding the per-element grab/pointer cursors. */
+.wire-cursor,
+.wire-cursor *:not(input):not(textarea) {
+  cursor: crosshair !important;
+}
+
+/* While a part or label is being dragged, every part of the canvas shows the
+   grabbing cursor, even when the pointer stays over the dragged element. */
+.grabbing-cursor,
+.grabbing-cursor *:not(input):not(textarea) {
+  cursor: grabbing !important;
+}
+
 @media print {
   /* margin 0 removes the browser's header/footer (page title, URL, date,
      page numbers); the 10mm content inset comes from each page's padding.
