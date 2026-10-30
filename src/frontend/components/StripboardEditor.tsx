@@ -48,6 +48,8 @@ export default function StripboardEditor({ readOnly = false, hideSidebar = false
   const setActiveEditor = useProjectStore((s) => s.setActiveEditor);
   const showValuesOnBoard = useProjectStore((s) => s.showValuesOnBoard);
   const setShowValuesOnBoard = useProjectStore((s) => s.setShowValuesOnBoard);
+  const labelMovement = useProjectStore((s) => s.labelMovement);
+  const setLabelMovement = useProjectStore((s) => s.setLabelMovement);
   const [editFootprintId, setEditFootprintId] = useState<string | null>(null);
   const applyAutoLayout = useProjectStore((s) => s.applyAutoLayout);
   const setHighlightedNetId = useProjectStore((s) => s.setHighlightedNetId);
@@ -253,9 +255,9 @@ export default function StripboardEditor({ readOnly = false, hideSidebar = false
           // quality, then the guarded pick (wire-over-part crossings never
           // trade up), then score, then the earliest ordering.
           if (!best || result.quality < best.result.quality ||
-              (result.quality === best.result.quality &&
-                (crossings < best.crossings || (crossings === best.crossings &&
-                  (score < best.score || (score === best.score && idx < best.index)))))) {
+            (result.quality === best.result.quality &&
+              (crossings < best.crossings || (crossings === best.crossings &&
+                (score < best.score || (score === best.score && idx < best.index)))))) {
             best = { result, score, crossings, index: idx };
           }
           if (!dispatch(worker) && inFlight === 0) finalize();
@@ -406,6 +408,13 @@ export default function StripboardEditor({ readOnly = false, hideSidebar = false
                   title: "Outline in red any parts whose real bodies run into each other",
                   checked: showOverlaps,
                   onChange: setShowOverlaps,
+                },
+                {
+                  key: "labels",
+                  label: "label movement",
+                  title: "Allow dragging component labels and pin names on their own",
+                  checked: labelMovement !== false,
+                  onChange: setLabelMovement,
                 },
               ]}
             />
