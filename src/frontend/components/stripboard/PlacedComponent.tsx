@@ -10,7 +10,6 @@ import { PartBody, partDrawing } from "./partDrawing";
 
 const PIN_HIT_RADIUS = HOLE_SPACING * 0.35;
 const CLASH_STROKE = "#dc2626";
-const LABEL_HALO_OPACITY = 0.8;
 // the selection bar's lock (24-unit box), drawn after a locked part's label: an
 // emoji there depends on the system's fonts and did not show everywhere
 const LOCK_SHAPE = (
@@ -151,12 +150,11 @@ export default function PlacedComponent({ component, isSelected, clashing = fals
     return (
       <text
         key={`name-${pin.pinId}-${pin.row}-${pin.col}`}
-        className="stripboard-label-halo stripboard-label-text"
+        className="label-halo stripboard-pin-text"
         x={center.x}
         y={center.y + 10}
         textAnchor="middle"
         fontSize={6}
-        strokeOpacity={LABEL_HALO_OPACITY}
         strokeWidth={1.6}
         paintOrder="stroke"
         strokeLinejoin="round"
@@ -173,13 +171,11 @@ export default function PlacedComponent({ component, isSelected, clashing = fals
   const ly = label.y + (component.boardLabelOffset?.y ?? 0);
   const onBody = {
     dominantBaseline: "central" as const,
-    strokeOpacity: LABEL_HALO_OPACITY,
     strokeWidth: 3,
     paintOrder: "stroke",
     strokeLinejoin: "round" as const,
   };
   const offBody = {
-    strokeOpacity: LABEL_HALO_OPACITY,
     strokeWidth: 3,
     paintOrder: "stroke",
     strokeLinejoin: "round" as const,
@@ -204,7 +200,7 @@ export default function PlacedComponent({ component, isSelected, clashing = fals
       {showLabel && (
         <>
           <text
-            className="stripboard-label-halo stripboard-label-text"
+            className="label-halo stripboard-label-text"
             x={lx}
             y={ly}
             textAnchor="middle" fontSize={11} fontWeight={600}
@@ -226,7 +222,7 @@ export default function PlacedComponent({ component, isSelected, clashing = fals
               transform={`translate(${lx + labelW / 2 + 1} ${ly - (label.onBody ? 5 : 9)}) scale(${10 / 24})`}
               fill="none" strokeLinecap="round" strokeLinejoin="round" pointerEvents="none"
             >
-              {label.onBody && <g className="stripboard-label-halo" strokeOpacity={LABEL_HALO_OPACITY} strokeWidth={6}>{LOCK_SHAPE}</g>}
+              {label.onBody && <g className="label-halo" strokeWidth={6}>{LOCK_SHAPE}</g>}
               <g className="stripboard-label-ink" strokeWidth={2.6}>{LOCK_SHAPE}</g>
             </g>
           )}

@@ -267,14 +267,13 @@ export default function SchematicComponentBlock({
           {/* Label */}
           {!editingLabel && (
             <text
+              className="label-halo"
               x={labelX}
               y={labelY}
               textAnchor="middle"
               fontSize={12}
               fontWeight={600}
               fill="var(--component-text)"
-              stroke="var(--schematic-bg)"
-              strokeOpacity={0.8}
               strokeWidth={3}
               strokeLinejoin="round"
               style={{ cursor: "grab", userSelect: "none", paintOrder: "stroke" }}

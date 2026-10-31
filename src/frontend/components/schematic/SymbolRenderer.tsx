@@ -249,14 +249,13 @@ export default function SymbolRenderer({
               const ly = lp.y + (pinOff?.y ?? 0);
               return (
                 <text
+                  className="label-halo"
                   x={lx} y={ly}
                   fontSize={9}
                   textAnchor={lp.anchor}
                   dominantBaseline={lp.baseline}
                   fill="var(--pin-text)"
-                  stroke="var(--schematic-bg)"
-                  strokeOpacity={0.8}
-                  strokeWidth={3}
+                  strokeWidth={2}
                   strokeLinejoin="round"
                   style={{
                     userSelect: "none",
