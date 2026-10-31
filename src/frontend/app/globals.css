@@ -9,8 +9,8 @@
   --accent: #113768;
   --accent-light: #5b9bd5;
   --copper: #a06a14;
-  --label-halo: #e5e5e5;
-  --label-halo-opacity: 0.8;
+  --label-halo: #fafafa;
+  --label-halo-opacity: 0.9;
 
   /* SVG semantic colors */
   --board-bg: white;

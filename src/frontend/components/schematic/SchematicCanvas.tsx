@@ -1017,31 +1017,6 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
           />
         ))}
 
-        {/* Junction dots where three or more wire ends, pins or labels meet */}
-        {junctionPoints.map((jp) => {
-          const color = jp.wireId ? (wireColorMap.get(jp.wireId) ?? "var(--junction-dot)") : "var(--junction-dot)";
-          return (
-            <circle
-              key={pointKey(jp.x, jp.y)}
-              cx={jp.x} cy={jp.y} r={2.5}
-              fill={color}
-              pointerEvents="none"
-            />
-          );
-        })}
-
-        {/* Wire ends that touch nothing */}
-        {danglingEnds.map((d) => (
-          <rect
-            key={`d-${pointKey(d.x, d.y)}`}
-            x={d.x - 2.5} y={d.y - 2.5} width={5} height={5}
-            fill="var(--schematic-bg)"
-            stroke={wireColorMap.get(d.wireId) ?? "var(--wire-default)"}
-            strokeWidth={1.2}
-            pointerEvents="none"
-          />
-        ))}
-
         {/* Wire drawing preview — L-shape following mouse direction */}
         {wireStartPos && wirePreview && (() => {
           const sameX = Math.abs(wirePreview.x - wireStartPos.x) < 1;
@@ -1097,6 +1072,29 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
             getSVGPoint={getSVGPoint}
             readOnly={readOnly}
             part="symbol"
+          />
+        ))}
+
+        {/* Junction dots where three or more wire ends, pins or labels meet */}
+        {junctionPoints.map((jp) => {
+          const color = jp.wireId ? (wireColorMap.get(jp.wireId) ?? "var(--junction-dot)") : "var(--junction-dot)";
+          return (
+            <circle
+              key={pointKey(jp.x, jp.y)}
+              cx={jp.x} cy={jp.y} r={2.5}
+              fill={color}
+              pointerEvents="none"
+            />
+          );
+        })}
+        {danglingEnds.map((d) => (
+          <rect
+            key={`d-${pointKey(d.x, d.y)}`}
+            x={d.x - 2.5} y={d.y - 2.5} width={5} height={5}
+            fill="var(--schematic-bg)"
+            stroke={wireColorMap.get(d.wireId) ?? "var(--wire-default)"}
+            strokeWidth={1.2}
+            pointerEvents="none"
           />
         ))}
 
