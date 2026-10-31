@@ -942,10 +942,10 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
   const cursorStyle = panZoom.panning
     ? "grabbing"
     : wireTool
-    ? "crosshair"
-    : isDragging
-    ? "grabbing"
-    : "default";
+      ? "crosshair"
+      : isDragging
+        ? "grabbing"
+        : "default";
 
   const wireStartPos = wireDrawingFrom;
   const selCount = selSize(selection);
@@ -1086,16 +1086,17 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
           );
         })()}
 
-        {/* Components */}
+        {/* Component symbols */}
         {sortedComponents.map((comp) => (
           <SchematicComponentBlock
-            key={comp.id}
+            key={`symbol-${comp.id}`}
             component={comp}
             isSelected={selectedCompSet.has(comp.id)}
             onMouseDown={(e) => handleItemMouseDown("components", comp.id, e)}
             onPinMouseDown={handlePinMouseDown}
             getSVGPoint={getSVGPoint}
             readOnly={readOnly}
+            part="symbol"
           />
         ))}
 
@@ -1138,6 +1139,33 @@ export default function SchematicCanvas({ readOnly = false }: { readOnly?: boole
             pointerEvents="none"
           />
         )}
+
+        {/* Component names and values */}
+        {sortedComponents.map((comp) => (
+          <SchematicComponentBlock
+            key={`labels-${comp.id}`}
+            component={comp}
+            isSelected={selectedCompSet.has(comp.id)}
+            onMouseDown={(e) => handleItemMouseDown("components", comp.id, e)}
+            onPinMouseDown={handlePinMouseDown}
+            getSVGPoint={getSVGPoint}
+            readOnly={readOnly}
+            part="labels"
+          />
+        ))}
+        {/* Component pin names */}
+        {sortedComponents.map((comp) => (
+          <SchematicComponentBlock
+            key={`pin-labels-${comp.id}`}
+            component={comp}
+            isSelected={selectedCompSet.has(comp.id)}
+            onMouseDown={(e) => handleItemMouseDown("components", comp.id, e)}
+            onPinMouseDown={handlePinMouseDown}
+            getSVGPoint={getSVGPoint}
+            readOnly={readOnly}
+            part="pin-labels"
+          />
+        ))}
       </svg>
 
       {/* Selection actions — a single component */}

@@ -94,6 +94,28 @@ select {
   user-select: text;
 }
 
+/* Board labels use one theme-aware style: dark ink on a light halo in light
+   mode, light ink on a dark halo in dark mode. */
+.stripboard-label-halo {
+  stroke: #fff;
+}
+.stripboard-label-text {
+  fill: #1a1a1a;
+}
+.stripboard-label-ink {
+  stroke: #1a1a1a;
+}
+
+:root.dark .stripboard-label-halo {
+  stroke: #000;
+}
+:root.dark .stripboard-label-text {
+  fill: #f7f7f7;
+}
+:root.dark .stripboard-label-ink {
+  stroke: #f7f7f7;
+}
+
 /* Sheen sweeping the auto-layout progress fill: the solver's last phases can
    run long without progress messages, and a frozen bar reads as a hang. */
 @keyframes progress-sheen {

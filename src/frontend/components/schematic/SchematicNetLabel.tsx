@@ -125,6 +125,7 @@ export default function SchematicNetLabel({
           dominantBaseline={tp.baseline}
           fill={isSelected ? "var(--symbol-stroke-selected)" : "var(--component-text)"}
           stroke="var(--schematic-bg)"
+          strokeOpacity={0.8}
           strokeWidth={3}
           strokeLinejoin="round"
           style={{ userSelect: "none", paintOrder: "stroke" }}

@@ -255,6 +255,7 @@ export default function SymbolRenderer({
                   dominantBaseline={lp.baseline}
                   fill="var(--pin-text)"
                   stroke="var(--schematic-bg)"
+                  strokeOpacity={0.8}
                   strokeWidth={3}
                   strokeLinejoin="round"
                   style={{
